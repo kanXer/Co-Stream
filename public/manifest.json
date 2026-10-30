@@ -1,7 +1,7 @@
 {
   "name": "Co Stream",
   "short_name": "CoStream",
-  "description": "Discover movies and series, watch official trailers and licensed video, and save open videos offline.",
+  "description": "Discover Hindi movies and web series, browse episodes, choose quality and languages, and save videos offline.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#05090c",

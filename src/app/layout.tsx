@@ -2,16 +2,50 @@ import type { Metadata, Viewport } from 'next';
 import { AuthGate } from '@/components/AuthGate';
 import PwaRegister from '@/components/PwaRegister';
 import { StreamProvider } from '@/context/StreamContext';
+import { getSiteUrl } from '@/lib/site';
 import './globals.css';
 
+const siteUrl = getSiteUrl();
+const title = 'Co Stream — Your cinema, together';
+const description = 'Discover Hindi movies and web series, browse every season and episode, and watch with quality, subtitle, audio-language, and offline controls.';
+
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
-  title: 'Co Stream — Your cinema, together',
-  description: 'Discover movies and series, browse seasons and episodes, and watch in a modern player.',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: title,
+    template: '%s | Co Stream',
+  },
+  description,
   applicationName: 'Co Stream',
-  authors: [{ name: 'Co Stream' }],
+  authors: [{ name: 'Co Stream', url: siteUrl }],
+  creator: 'Co Stream',
+  publisher: 'Co Stream',
+  category: 'entertainment',
+  referrer: 'origin-when-cross-origin',
   keywords: ['movie discovery', 'series episodes', 'video player', 'watchlist', 'streaming platforms'],
+  alternates: { canonical: '/' },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
   manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: 'Co Stream',
+    statusBarStyle: 'black-translucent',
+  },
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },
@@ -22,16 +56,29 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: 'website',
+    url: '/',
+    locale: 'en_IN',
     siteName: 'Co Stream',
-    title: 'Co Stream — Your cinema, together',
-    description: 'Movie and series discovery with season-wise episodes and a modern player.',
-    images: ['/og-image.png'],
+    title,
+    description,
+    images: [{
+      url: '/og-image.jpg',
+      width: 1200,
+      height: 630,
+      alt: 'Co Stream — Your cinema, together',
+      type: 'image/jpeg',
+    }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Co Stream — Your cinema, together',
-    description: 'Discover, queue, and watch movies or season-wise series episodes.',
-    images: ['/og-image.png'],
+    title,
+    description,
+    images: [{
+      url: '/og-image.jpg',
+      width: 1200,
+      height: 630,
+      alt: 'Co Stream — Your cinema, together',
+    }],
   },
 };
 

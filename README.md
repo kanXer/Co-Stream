@@ -40,6 +40,11 @@ Open <http://localhost:3000>.
 No catalog key is required. Optional Firebase Web values enable Google sign-in;
 guest mode works without Firebase.
 
+For WhatsApp and other social previews, set `NEXT_PUBLIC_SITE_URL` to the final
+public HTTPS deployment URL. Vercel production URL variables are detected
+automatically when this value is not configured. The repository includes a
+lightweight `1200x630` JPEG Open Graph image at `public/og-image.jpg`.
+
 ## Commands
 
 ```bash
