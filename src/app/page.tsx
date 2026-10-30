@@ -53,6 +53,9 @@ export default function HomePage() {
     clearSearchHistory,
     isOnline,
     currentItem,
+    isExpanded,
+    setIsExpanded,
+    closePlayer,
   } = useStream();
   const [tab, setTab] = useState<Tab>('home');
   const [catalog, setCatalog] = useState<CatalogPayload | null>(null);
@@ -68,7 +71,19 @@ export default function HomePage() {
   const [platforms, setPlatforms] = useState<StreamingPlatformId[]>(DEFAULT_STREAMING_PLATFORMS);
   const [platformReady, setPlatformReady] = useState(false);
   const [platformPickerOpen, setPlatformPickerOpen] = useState(false);
+  const [showBackExitHint, setShowBackExitHint] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRootBack = useRef(0);
+  const backNavigationState = useRef({
+    tab: 'home' as Tab,
+    selectedItem: false,
+    settingsOpen: false,
+    platformPickerOpen: false,
+    platformReady: false,
+    isExpanded: false,
+    hasPlayer: false,
+  });
 
   const loadHome = useCallback(async () => {
     if (!platformReady || tab === 'search' || tab === 'offline') return;
@@ -124,6 +139,91 @@ export default function HomePage() {
     }
     // (debug auto-play removed)
   }, []);
+
+  useEffect(() => {
+    backNavigationState.current = {
+      tab,
+      selectedItem: Boolean(selectedItem),
+      settingsOpen,
+      platformPickerOpen,
+      platformReady,
+      isExpanded,
+      hasPlayer: Boolean(currentItem),
+    };
+  }, [tab, selectedItem, settingsOpen, platformPickerOpen, platformReady, isExpanded, currentItem]);
+
+  useEffect(() => {
+    const guardKey = '__coStreamBackGuard';
+    const armBackGuard = () => {
+      window.history.pushState({ ...window.history.state, [guardKey]: true }, '', window.location.href);
+    };
+    if (!window.history.state?.[guardKey]) armBackGuard();
+
+    const clearExitHint = () => {
+      setShowBackExitHint(false);
+      if (backExitTimer.current) clearTimeout(backExitTimer.current);
+      backExitTimer.current = null;
+    };
+    const consumeBack = (action: () => void) => {
+      lastRootBack.current = 0;
+      clearExitHint();
+      action();
+      armBackGuard();
+    };
+    const onPopState = () => {
+      const state = backNavigationState.current;
+      if (document.fullscreenElement) {
+        consumeBack(() => { void document.exitFullscreen().catch(() => undefined); });
+        return;
+      }
+      if (state.isExpanded) {
+        consumeBack(() => setIsExpanded(false));
+        return;
+      }
+      if (state.selectedItem) {
+        consumeBack(() => setSelectedItem(null));
+        return;
+      }
+      if (state.settingsOpen) {
+        consumeBack(() => setSettingsOpen(false));
+        return;
+      }
+      if (state.platformPickerOpen && state.platformReady) {
+        consumeBack(() => setPlatformPickerOpen(false));
+        return;
+      }
+      if (state.tab !== 'home') {
+        consumeBack(() => setTab('home'));
+        return;
+      }
+      if (state.hasPlayer) {
+        consumeBack(closePlayer);
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastRootBack.current <= 1800) {
+        clearExitHint();
+        window.removeEventListener('popstate', onPopState);
+        window.history.back();
+        return;
+      }
+      lastRootBack.current = now;
+      setShowBackExitHint(true);
+      if (backExitTimer.current) clearTimeout(backExitTimer.current);
+      backExitTimer.current = setTimeout(() => {
+        setShowBackExitHint(false);
+        lastRootBack.current = 0;
+      }, 1800);
+      armBackGuard();
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      if (backExitTimer.current) clearTimeout(backExitTimer.current);
+    };
+  }, [closePlayer, setIsExpanded]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -292,6 +392,8 @@ export default function HomePage() {
       </main>
 
       {!isOnline && <div className="fixed top-19 left-1/2 -translate-x-1/2 z-40 rounded-full border border-amber-500/30 bg-[var(--panel-elevated)]/95 backdrop-blur-xl px-4 py-2 flex items-center gap-2 shadow-lg"><WifiOff size={14} className="text-amber-500" /><span className="text-[10px] font-black">Offline • downloads remain available</span></div>}
+
+      {showBackExitHint && <div className={`fixed left-1/2 z-[100] -translate-x-1/2 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--panel-elevated)]/95 px-4 py-2.5 text-[11px] font-black shadow-2xl backdrop-blur-2xl ${currentItem ? 'bottom-[calc(11rem+env(safe-area-inset-bottom,0px))]' : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'}`}>Press back again to exit</div>}
 
       <VideoPlayer />
 
