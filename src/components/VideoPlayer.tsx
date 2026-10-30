@@ -133,14 +133,14 @@ function buildEpisodeQueue(item: MediaItem, episodes: MediaEpisode[], season: nu
 function captureVideoFrame(video: HTMLVideoElement) {
   if (!video.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
   try {
-    const scale = Math.min(1, 1280 / video.videoWidth);
+    const scale = Math.min(0.5, 480 / video.videoWidth);
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const context = canvas.getContext('2d');
     if (!context) return null;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.88);
+    return canvas.toDataURL('image/jpeg', 0.7);
   } catch {
     return null;
   }
@@ -224,8 +224,10 @@ export function VideoPlayer() {
   const [bufferedEnd, setBufferedEnd] = useState(0);
   const [pipSupported, setPipSupported] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState<number | null>(null);
+  const [hlsLevels, setHlsLevels] = useState<Array<{ id: number; label: string; height: number }>>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<YouTubePlayer | null>(null);
   const youtubeTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -514,18 +516,54 @@ export function VideoPlayer() {
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        startLevel: 0,
-        capLevelToPlayerSize: true,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
+        // ABR: start at -1 (auto) so HLS.js picks the best level for the
+        // measured connection. Seed the EWMA with a conservative 3 Mbps
+        // estimate so it doesn't overshoot on the first segment fetch.
+        startLevel: -1,
+        abrEwmaDefaultEstimate: 3_000_000,   // 3 Mbps initial estimate
+        abrEwmaFastLive: 2,
+        abrEwmaSlowLive: 9,
+        abrEwmaFastVoD: 2,
+        abrEwmaSlowVoD: 9,
+        // Don't cap by player size — user can manually pick 1080p even on
+        // a small viewport. ABR will still adapt automatically.
+        capLevelToPlayerSize: false,
+        // Buffer: 45 s ahead gives a good stall-free cushion on typical
+        // connections without blowing the memory budget.
+        maxBufferLength: 45,
+        maxMaxBufferLength: 90,
+        maxBufferSize: 50 * 1024 * 1024,     // 50 MB
+        // Back-buffer: 30 s so backward seeks are instant.
         backBufferLength: 30,
-        manifestLoadingMaxRetry: 4,
-        levelLoadingMaxRetry: 4,
+        // Wider hole tolerance — small timestamp gaps should NOT stall.
+        maxBufferHole: 1.5,
+        // Recovery watchdog — trigger faster on high-buffer stalls.
+        highBufferWatchdogPeriod: 3,
+        // Fragment nudge: keep trying for up to 10 nudges.
+        nudgeOffset: 0.3,
+        nudgeMaxRetry: 10,
+        // Retry config — generous retries with short delays to recover
+        // from transient CDN hiccups without showing an error.
+        manifestLoadingMaxRetry: 6,
+        manifestLoadingRetryDelay: 400,
+        manifestLoadingTimeOut: 15000,
+        levelLoadingMaxRetry: 6,
+        levelLoadingRetryDelay: 400,
+        levelLoadingTimeOut: 15000,
         fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 400,
+        fragLoadingTimeOut: 20000,
+        // Always test bandwidth for accurate initial level selection.
+        testBandwidth: true,
+        progressive: true,
       });
-      hlsInstance.loadSource(directUrl);
+      // No level cap — all quality levels (480p, 720p, 1080p) available.
+      hlsInstance.autoLevelCapping = -1;
+      hlsRef.current = hlsInstance;
+      // Attach media FIRST, then load source — recommended HLS.js order.
       hlsInstance.attachMedia(video);
-      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+      hlsInstance.loadSource(directUrl);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
         if (resumeAt > 2 && resumeAt < (video.duration || currentItem.durationSeconds) - 5) video.currentTime = resumeAt;
         pendingSeekRef.current = null;
         reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: false, error: null });
@@ -533,9 +571,44 @@ export function VideoPlayer() {
         video.playbackRate = playbackSpeed;
         video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
         episodeDetailsLoaderRef.current?.();
+
+        if (data.levels && data.levels.length > 1) {
+          const parsed = data.levels.map((lvl, index) => ({
+            id: index,
+            label: lvl.height ? `${lvl.height}p` : `${Math.round(lvl.bitrate / 1000)}k`,
+            height: lvl.height || 0,
+          })).sort((a, b) => b.height - a.height);
+          setHlsLevels(parsed);
+        } else {
+          setHlsLevels([]);
+        }
       });
+      // Recovery: on non-fatal errors try to recover; on fatal errors report.
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be played.' });
+        if (!data.fatal) {
+          // Non-fatal buffer stall — nudge forward to escape the stall without
+          // a full media error recovery (which briefly blacks out the video).
+          if (
+            data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR ||
+            data.details === Hls.ErrorDetails.BUFFER_NUDGE_ON_STALL
+          ) {
+            try { hlsInstance?.startLoad(); } catch { hlsInstance?.recoverMediaError(); }
+          }
+          // Non-fatal network errors — restart loading silently.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            try { hlsInstance?.startLoad(); } catch { /* ignored */ }
+          }
+          return;
+        }
+        // Fatal error — attempt media recovery once, then network recovery,
+        // then give up and show fallback quality or error.
+        if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          hlsInstance?.recoverMediaError();
+        } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          hlsInstance?.startLoad();
+        } else {
+          reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be played.' });
+        }
       });
     } else if (isHls) {
       video.src = directUrl;
@@ -560,8 +633,20 @@ export function VideoPlayer() {
       reportPlayback({ isLoading: true });
       if (stallTimer) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        if (video.readyState < 3) fallBackQuality();
-      }, 4500);
+        if (video.readyState < 3) {
+          if (hlsRef.current) {
+            // For HLS: nudge the stream forward to escape the stall.
+            // If the buffer is simply dry, startLoad() re-triggers fetching.
+            try {
+              hlsRef.current.startLoad();
+            } catch {
+              hlsRef.current.recoverMediaError();
+            }
+          } else {
+            fallBackQuality();
+          }
+        }
+      }, 2000);
     };
     const onCanPlay = () => {
       if (stallTimer) clearTimeout(stallTimer);
@@ -612,6 +697,8 @@ export function VideoPlayer() {
       seekHoldRef.current = { active: false, resume: false };
       setHeldVideoFrame(null);
       video.pause();
+      hlsRef.current = null;
+      setHlsLevels([]);
       hlsInstance?.destroy();
       registerController(null);
     };
@@ -743,12 +830,22 @@ export function VideoPlayer() {
     chooseSpeed(SPEED_OPTIONS[nextIdx]);
   };
 
-  const chooseQuality = (label: string, url: string) => {
-    pendingSeekRef.current = videoRef.current?.currentTime || currentTime;
+  const chooseQuality = (label: string, url: string, hlsLevelIndex?: number) => {
     setSelectedQuality(label);
     setPlayerMenu(null);
-    setDirectUrl(url);
     revealControls();
+
+    if (hlsRef.current && typeof hlsLevelIndex === 'number') {
+      // -1 = HLS auto/ABR mode; any other value = pin to that level index.
+      hlsRef.current.currentLevel = hlsLevelIndex;
+      hlsRef.current.autoLevelCapping = hlsLevelIndex === -1 ? -1 : hlsLevelIndex;
+      return;
+    }
+
+    if (url && url !== directUrl) {
+      pendingSeekRef.current = videoRef.current?.currentTime || currentTime;
+      setDirectUrl(url);
+    }
   };
 
   const chooseAudio = async (resolveUrl: string) => {
@@ -1107,7 +1204,7 @@ export function VideoPlayer() {
       <div className={isExpanded ? 'watch-shell fixed inset-0 z-[70] overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-px h-px overflow-hidden'}>
         {isExpanded && background && (
           <div className="watch-backdrop fixed inset-0 pointer-events-none">
-            <Image src={background} alt="" fill sizes="100vw" className="watch-backdrop-image object-cover scale-110 blur-3xl opacity-35" />
+            <Image src={background} alt="" fill sizes="100vw" priority className="watch-backdrop-image object-cover" />
             <div className="watch-backdrop-shade absolute inset-0 bg-black/85" />
           </div>
         )}
@@ -1136,7 +1233,12 @@ export function VideoPlayer() {
                     preload="auto"
                     autoPlay
                     muted
-                    style={{ filter: `brightness(${brightness})` }}
+                    style={{
+                      filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
+                      transform: 'translateZ(0)',
+                      WebkitTransform: 'translateZ(0)',
+                      contain: 'paint',
+                    }}
                     className={`w-full h-full bg-black transition-[object-fit] duration-200 ${
                       videoFit === 'cover' ? 'object-cover' : videoFit === 'fill' ? 'object-fill' : 'object-contain'
                     }`}
@@ -1419,24 +1521,62 @@ export function VideoPlayer() {
                         </div>
 
                         {/* Section: Quality */}
-                        {source?.qualities && source.qualities.length > 0 && (
+                        {((hlsLevels.length > 0) || (source?.qualities && source.qualities.length > 0)) && (
                           <div className="mb-3">
                             <p className="text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1.5 px-1">Quality</p>
                             <div className="space-y-1">
-                              {source.qualities.map((quality) => (
-                                <button
-                                  key={`${quality.label}-${quality.url}`}
-                                  onClick={() => chooseQuality(quality.label, quality.url)}
-                                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
-                                    selectedQuality === quality.label
-                                      ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
-                                      : 'hover:bg-white/10 text-white/80'
-                                  }`}
-                                >
-                                  <span>{quality.label}</span>
-                                  {selectedQuality === quality.label && <Check size={14} className="text-[#7fffd2]" />}
-                                </button>
-                              ))}
+                              {hlsLevels.length > 0 ? (
+                                <>
+                                  <button
+                                    onClick={() => chooseQuality('Auto', '', -1)}
+                                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                                      selectedQuality === 'Auto'
+                                        ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
+                                        : 'hover:bg-white/10 text-white/80'
+                                    }`}
+                                  >
+                                    <span>Auto (Adaptive)</span>
+                                    {selectedQuality === 'Auto' && <Check size={14} className="text-[#7fffd2]" />}
+                                  </button>
+                                  {hlsLevels.map((lvl) => (
+                                    <button
+                                      key={lvl.id}
+                                      onClick={() => chooseQuality(lvl.label, '', lvl.id)}
+                                      className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                                        selectedQuality === lvl.label
+                                          ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
+                                          : 'hover:bg-white/10 text-white/80'
+                                      }`}
+                                    >
+                                      <span className="flex items-center gap-1.5">
+                                        {lvl.label}
+                                        {lvl.height >= 1080 && <span className="text-[9px] font-black px-1 py-0.5 rounded bg-[#7fffd2]/20 text-[#7fffd2]">HD</span>}
+                                        {lvl.height === 480 && <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/50">SD</span>}
+                                      </span>
+                                      {selectedQuality === lvl.label && <Check size={14} className="text-[#7fffd2]" />}
+                                    </button>
+                                  ))}
+                                </>
+                              ) : (
+                                source?.qualities?.map((quality) => (
+                                  <button
+                                    key={`${quality.label}-${quality.url}`}
+                                    onClick={() => chooseQuality(quality.label, quality.url)}
+                                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                                      selectedQuality === quality.label
+                                        ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
+                                        : 'hover:bg-white/10 text-white/80'
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-1.5">
+                                      {quality.label}
+                                      {quality.label === '1080p' && <span className="text-[9px] font-black px-1 py-0.5 rounded bg-[#7fffd2]/20 text-[#7fffd2]">HD</span>}
+                                      {quality.label === '480p' && <span className="text-[9px] font-black px-1 py-0.5 rounded bg-white/10 text-white/50">SD</span>}
+                                    </span>
+                                    {selectedQuality === quality.label && <Check size={14} className="text-[#7fffd2]" />}
+                                  </button>
+                                ))
+                              )}
                             </div>
                           </div>
                         )}

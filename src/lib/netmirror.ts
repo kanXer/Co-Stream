@@ -662,11 +662,16 @@ export async function resolveCurrentNetMirrorStream(options: {
     throw new Error(embed.error || 'No playable NetMirror stream is available for this title.');
   }
 
-  // Start at 720p or lower. Relaying 1080p through a serverless function can
-  // leave too little bandwidth headroom for uninterrupted playback; viewers
-  // can still select 1080p manually from the quality menu.
+  // Sort all streams highest-first. Default to 720p for a good balance of
+  // quality and smooth streaming; viewers can switch to 480p or 1080p from the
+  // quality menu. We no longer hard-cap at 720p — 1080p streams are served
+  // directly and are fully selectable.
   const ordered = [...candidates].sort((left, right) => right.resolution - left.resolution);
-  const selected = ordered.find((stream) => stream.resolution > 0 && stream.resolution <= 720) || ordered[0];
+  const selected =
+    ordered.find((stream) => stream.resolution === 720) ||
+    ordered.find((stream) => stream.resolution === 480) ||
+    ordered.find((stream) => stream.resolution > 0) ||
+    ordered[0];
   const metadata = 'metadata' in resolved ? resolved.metadata : null;
   const captions = (embed.captions || []).flatMap((caption, index) => {
     if (!caption.url) return [];
@@ -979,9 +984,17 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     });
   }
 
+  const isImage = /\.(jpg|jpeg|png|webp|avif|gif)$/i.test(mediaPath) && !isTransportStream;
+  const isSubtitle = /\.(vtt|srt)$/i.test(mediaPath);
+  const cacheControl = isImage
+    ? 'public, max-age=86400, stale-while-revalidate=604800'
+    : isSubtitle
+      ? 'public, max-age=86400'
+      : 'public, max-age=300';
+
   const responseHeaders = new Headers({
     'Content-Type': resolvedContentType,
-    'Cache-Control': 'public, max-age=300',
+    'Cache-Control': cacheControl,
     'Access-Control-Allow-Origin': '*',
   });
   for (const name of ['content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
@@ -989,18 +1002,18 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     if (value) responseHeaders.set(name, value);
   }
 
-  // Cache small responses (audio fragments are ~15-30 KB) so hls.js retries
+  // Cache small responses (images, audio fragments ~15-30 KB) so hls.js retries
   // and multiple viewers do not hammer the upstream CDN. Large video
   // fragments are streamed straight through.
   const contentLength = Number(upstream.headers.get('content-length') || 0);
-  if (!rangeHeader && contentLength > 0 && contentLength <= PROXY_CACHE_MAX_BYTES) {
+  if (!rangeHeader && contentLength > 0 && (contentLength <= PROXY_CACHE_MAX_BYTES || isImage)) {
     const body = Buffer.from(await upstream.arrayBuffer());
-    if (proxyCache.size > 300) proxyCache.clear();
+    if (proxyCache.size > 500) proxyCache.clear();
     proxyCache.set(target, {
       body,
       contentType: resolvedContentType,
       status: upstream.status,
-      expires: Date.now() + 5 * 60 * 1000,
+      expires: Date.now() + (isImage ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000),
     });
     return new Response(body, {
       status: upstream.status,
