@@ -33,6 +33,7 @@ export interface PlaybackSource {
   audioTracks?: PlaybackAudioTrack[];
   selectedQuality?: string;
   selectedAudio?: string;
+  resolvedAt?: number;
 }
 
 export interface MediaSeason {

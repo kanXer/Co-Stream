@@ -255,16 +255,35 @@ export function VideoPlayer() {
     };
 
     reportPlayback({ isLoading: true, isPlaying: false, error: null, currentTime: 0 });
-    const isLegacyNetMirrorHls = itemAtStart.id.startsWith('netmirror-') && Boolean(
+    const isNetMirror = itemAtStart.id.startsWith('netmirror-');
+    const isLegacyNetMirrorHls = isNetMirror && Boolean(
       itemAtStart.playback?.mimeType?.includes('mpegurl')
       || itemAtStart.playback?.url?.includes('net52.cc'),
     );
-    if (itemAtStart.playback && !isLegacyNetMirrorHls) {
+    const isFreshNetMirrorPlayback = Boolean(
+      itemAtStart.playback?.resolvedAt
+      && Date.now() - itemAtStart.playback.resolvedAt < 2 * 60 * 1000,
+    );
+    const canReusePlayback = Boolean(itemAtStart.playback) && !isLegacyNetMirrorHls && (
+      !isNetMirror
+      || isFreshNetMirrorPlayback
+      || !navigator.onLine
+    );
+    if (canReusePlayback) {
       applySource(itemAtStart.playback);
     } else {
-      const resolveUrl = itemAtStart.id.startsWith('netmirror-')
-        ? `/api/netmirror/title?id=${encodeURIComponent(itemAtStart.providerId)}&title=${encodeURIComponent(itemAtStart.title)}&type=${itemAtStart.mediaType}&year=${encodeURIComponent(itemAtStart.year)}`
-        : `/api/title?type=${itemAtStart.mediaType}&id=${encodeURIComponent(itemAtStart.providerId)}`;
+      let resolveUrl = `/api/title?type=${itemAtStart.mediaType}&id=${encodeURIComponent(itemAtStart.providerId)}`;
+      if (isNetMirror) {
+        const params = new URLSearchParams({
+          id: itemAtStart.providerId,
+          title: itemAtStart.title,
+          type: itemAtStart.mediaType,
+          year: itemAtStart.year,
+        });
+        if (itemAtStart.selectedSeason) params.set('season', String(itemAtStart.selectedSeason));
+        if (itemAtStart.selectedEpisode) params.set('episode', String(itemAtStart.selectedEpisode));
+        resolveUrl = `/api/netmirror/title?${params.toString()}`;
+      }
       fetch(resolveUrl)
         .then(async (response) => {
           const payload = await response.json();
@@ -730,24 +749,24 @@ export function VideoPlayer() {
   return (
     <>
       {/* Persistent engine. In mini mode it remains mounted but direct-video audio can continue. */}
-      <div className={isExpanded ? 'fixed inset-0 z-[70] bg-[#020507] text-white overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-px h-px overflow-hidden'}>
+      <div className={isExpanded ? 'watch-shell fixed inset-0 z-[70] overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-px h-px overflow-hidden'}>
         {isExpanded && background && (
-          <div className="fixed inset-0 pointer-events-none">
-            <Image src={background} alt="" fill sizes="100vw" className="object-cover scale-110 blur-3xl opacity-25" />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#030708]/65 via-[#020506]/90 to-[#020506]" />
+          <div className="watch-backdrop fixed inset-0 pointer-events-none">
+            <Image src={background} alt="" fill sizes="100vw" className="watch-backdrop-image object-cover scale-110 blur-3xl" />
+            <div className="watch-backdrop-shade absolute inset-0" />
           </div>
         )}
 
         <div className={isExpanded ? 'relative min-h-screen flex flex-col' : ''}>
           {isExpanded && (
-            <header className="sticky top-0 z-20 flex items-center justify-between px-4 sm:px-7 py-4 bg-[#020507]/65 backdrop-blur-xl border-b border-white/8">
+            <header className="watch-header sticky top-0 z-20 flex items-center justify-between px-4 sm:px-7 py-4">
               <button onClick={minimize} className="player-icon"><ChevronDown size={21} /></button>
-              <div className="text-center min-w-0 px-3"><p className="text-[9px] uppercase tracking-[0.2em] font-black text-[#7fffd2]">Now watching</p><p className="text-xs font-bold text-white/65 truncate max-w-[52vw]">{currentItem.title}</p></div>
-              <div className="flex gap-2"><button onClick={() => setShowQueue(!showQueue)} className={`player-icon ${showQueue ? '!text-[#7fffd2]' : ''}`}><ListVideo size={19} /></button><button onClick={toggleFullscreen} className="player-icon">{isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
+              <div className="text-center min-w-0 px-3"><p className="watch-accent text-[9px] uppercase tracking-[0.2em] font-black">Now watching</p><p className="watch-muted text-xs font-bold truncate max-w-[52vw]">{currentItem.title}</p></div>
+              <div className="flex gap-2"><button onClick={() => setShowQueue(!showQueue)} className={`player-icon ${showQueue ? 'active' : ''}`}><ListVideo size={19} /></button><button onClick={toggleFullscreen} className="player-icon">{isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
             </header>
           )}
 
-          <main className={isExpanded ? 'relative flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-7 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5' : ''}>
+          <main className={isExpanded ? 'watch-main relative flex-1 w-full max-w-7xl mx-auto px-3 sm:px-6 py-4 sm:py-7 grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5' : ''}>
             <div className="min-w-0">
               <div
                 ref={stageRef}
@@ -877,7 +896,7 @@ export function VideoPlayer() {
               </div>
 
               {isExpanded && (
-                <div className="mt-3 flex items-center justify-between gap-3 flex-wrap rounded-2xl border border-white/8 bg-white/[.035] px-3 py-2.5">
+                <div className="watch-glass mt-3 flex items-center justify-between gap-3 flex-wrap rounded-2xl px-3 py-2.5">
                   <div className="flex items-center gap-1.5">
                     <button onClick={previousItem} className="player-pill"><SkipBack size={14} />Previous</button>
                     <button onClick={nextItem} className="player-pill">Next<SkipForward size={14} /></button>
@@ -893,19 +912,19 @@ export function VideoPlayer() {
 
             {isExpanded && (
               <aside className="min-w-0">
-                <div className="rounded-[26px] border border-white/10 bg-white/[0.055] backdrop-blur-xl p-5 lg:sticky lg:top-24">
+                <div className="watch-glass rounded-[26px] p-5 lg:sticky lg:top-24">
                   <div className="flex items-start gap-3.5">
-                    <div className="relative w-16 h-24 rounded-xl overflow-hidden bg-white/5 shrink-0">{currentItem.posterUrl && <Image src={currentItem.posterUrl} alt={currentItem.title} fill sizes="64px" className="object-cover" />}</div>
-                    <div className="min-w-0 pt-1"><p className="text-[9px] uppercase tracking-[.18em] font-black text-[#7fffd2]">{source?.label || 'Co Stream'}</p><h2 className="text-lg font-black leading-tight mt-1 line-clamp-2">{currentItem.title}</h2><p className="text-[11px] text-white/45 mt-1">{currentItem.year} • {currentItem.genres.slice(0, 2).join(' • ')}</p></div>
+                    <div className="watch-poster relative w-16 h-24 rounded-xl overflow-hidden shrink-0">{currentItem.posterUrl && <Image src={currentItem.posterUrl} alt={currentItem.title} fill sizes="64px" className="object-cover" />}</div>
+                    <div className="min-w-0 pt-1"><p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">{source?.label || 'Co Stream'}{selectedAudio !== 'Original' ? ` • ${selectedAudio}` : ''}</p><h2 className="text-lg font-black leading-tight mt-1 line-clamp-2">{currentItem.title}</h2><p className="watch-muted text-[11px] mt-1">{currentItem.year} • {currentItem.genres.slice(0, 2).join(' • ')}</p></div>
                   </div>
-                  <p className="mt-4 text-xs leading-6 text-white/52 line-clamp-5">{currentItem.overview}</p>
+                  <p className="watch-muted mt-4 text-xs leading-6 line-clamp-5">{currentItem.overview}</p>
                   <div className="grid grid-cols-4 gap-2 mt-4">
                     <button onClick={() => toggleWatchlist(currentItem)} className={`player-action ${saved ? 'active' : ''}`}><Bookmark size={17} className={saved ? 'fill-current' : ''} /><span>Save</span></button>
                     <div className="player-action"><OfflineButton item={currentItem} source={source} compact /><span>Offline</span></div>
                     <button onClick={share} className="player-action"><Share2 size={17} /><span>Share</span></button>
                     <button onClick={cycleThemeMode} className="player-action">{themeMode === 'DARK' ? <Sun size={17} /> : <Moon size={17} />}<span>Theme</span></button>
                   </div>
-                  <div className="flex gap-2 mt-2">
+                  <div className="mt-2">
                     <button
                       onClick={() => {
                         const room = coRoomId || Math.random().toString(36).slice(2, 8);
@@ -913,7 +932,7 @@ export function VideoPlayer() {
                         copyCoLink(room);
                         alert('Co-watch link copied. Share it with friends to sync playback in this room.');
                       }}
-                      className={`player-action ${coRoomId ? 'active' : ''}`}
+                      className={`player-action watch-wide-action w-full ${coRoomId ? 'active' : ''}`}
                       title="Start or copy co-watch room link"
                     >
                       <Users size={17} /><span>{coRoomId ? 'Co-watch' : 'Start Co-watch'}</span>
@@ -921,14 +940,14 @@ export function VideoPlayer() {
                   </div>
 
                   {(showQueue || queue.length > 1) && (
-                    <div className="mt-5 pt-4 border-t border-white/10">
-                      <div className="flex items-center justify-between"><p className="text-xs font-black">Up next</p><span className="text-[9px] text-white/35">{queueIndex + 1} / {queue.length}</span></div>
+                    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+                      <div className="flex items-center justify-between"><p className="text-xs font-black">Up next</p><span className="watch-muted text-[9px]">{queueIndex + 1} / {queue.length}</span></div>
                       <div className="mt-2 space-y-1 max-h-64 overflow-y-auto no-scrollbar">
                         {queue.map((entry, index) => (
-                          <div key={`${entry.id}-${index}`} className={`flex items-center gap-2.5 p-2 rounded-xl ${index === queueIndex ? 'bg-[#7fffd2]/10 text-[#7fffd2]' : 'text-white/60'}`}>
-                            <div className="relative w-8 h-11 rounded-lg overflow-hidden bg-white/5 shrink-0">{entry.posterUrl && <Image src={entry.posterUrl} alt="" fill sizes="32px" className="object-cover" />}</div>
+                          <div key={`${entry.id}-${index}`} className={`watch-queue-item flex items-center gap-2.5 p-2 rounded-xl ${index === queueIndex ? 'active' : ''}`}>
+                            <div className="watch-poster relative w-8 h-11 rounded-lg overflow-hidden shrink-0">{entry.posterUrl && <Image src={entry.posterUrl} alt="" fill sizes="32px" className="object-cover" />}</div>
                             <span className="text-[11px] font-bold truncate flex-1">{entry.title}</span>
-                            {index === queueIndex && <span className="w-1.5 h-1.5 rounded-full bg-[#7fffd2] animate-pulse" />}
+                            {index === queueIndex && <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse" />}
                           </div>
                         ))}
                       </div>
@@ -966,12 +985,12 @@ export function VideoPlayer() {
       )}
 
       {showTimer && (
-        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-md flex items-center justify-center p-5" onClick={() => setShowTimer(false)}>
-          <div className="w-full max-w-xs rounded-[26px] bg-[#11181a] text-white border border-white/12 p-5" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between"><div><p className="text-[9px] uppercase tracking-[.17em] font-black text-[#7fffd2]">Playback</p><h3 className="font-black mt-0.5">Sleep timer</h3></div><button onClick={() => setShowTimer(false)} className="player-icon"><X size={17} /></button></div>
+        <div className="fixed inset-0 z-[90] bg-black/55 backdrop-blur-md flex items-center justify-center p-5" onClick={() => setShowTimer(false)}>
+          <div className="watch-dialog w-full max-w-xs rounded-[26px] p-5" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between"><div><p className="watch-accent text-[9px] uppercase tracking-[.17em] font-black">Playback</p><h3 className="font-black mt-0.5">Sleep timer</h3></div><button onClick={() => setShowTimer(false)} className="icon-button"><X size={17} /></button></div>
             <div className="mt-4 grid grid-cols-2 gap-2">
               {[5, 10, 15, 30, 45, 60].map((minutes) => (
-                <button key={minutes} onClick={() => { setSleepTimer(minutes); setShowTimer(false); }} className={`py-3 rounded-2xl border text-xs font-bold ${sleepTimerMinutes === minutes ? 'border-[#7fffd2] bg-[#7fffd2]/12 text-[#7fffd2]' : 'border-white/10 bg-white/[.04] text-white/65'}`}>{minutes} minutes</button>
+                <button key={minutes} onClick={() => { setSleepTimer(minutes); setShowTimer(false); }} className={`watch-timer-option py-3 rounded-2xl border text-xs font-bold ${sleepTimerMinutes === minutes ? 'active' : ''}`}>{minutes} minutes</button>
               ))}
             </div>
             {sleepTimerMinutes && <button onClick={() => { setSleepTimer(null); setShowTimer(false); }} className="w-full mt-3 py-3 rounded-2xl bg-red-500/10 text-red-300 text-xs font-bold">Turn timer off</button>}

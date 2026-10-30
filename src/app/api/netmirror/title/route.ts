@@ -2,6 +2,7 @@ import {
   getCurrentNetMirrorSeason,
   getCurrentNetMirrorTitle,
   getCurrentNetMirrorVariants,
+  orderedNetMirrorAudioVariants,
   proxiedMediaPath,
   resolveCurrentNetMirrorStream,
 } from '@/lib/netmirror';
@@ -59,8 +60,9 @@ export async function GET(request: Request) {
       downloadUrl: downloadStream ? proxiedMediaPath(downloadStream.url) : proxiedMediaPath(resolved.streamUrl),
       mimeType: 'video/mp4',
       downloadable: true,
+      resolvedAt: Date.now(),
       selectedQuality: resolved.resolution,
-      selectedAudio: audioLabel(variants?.variants?.find((entry) => entry.dubSubjectId === audioId)?.language),
+      selectedAudio: audioLabel(resolved.audioLanguage),
       qualities: resolved.streams.map((stream) => ({
         label: stream.resolution,
         url: proxiedMediaPath(stream.url),
@@ -71,12 +73,7 @@ export async function GET(request: Request) {
         language: caption.language,
         url: `/api/netmirror/subtitle?target=${encodeURIComponent(caption.url)}`,
       })),
-      audioTracks: (variants?.variants || [])
-        .filter((entry) => entry.dubSubjectId && entry.detailPath && (
-          entry.language === 'Default'
-          || entry.isOriginal
-          || /dub|original/i.test(entry.language || '')
-        ))
+      audioTracks: orderedNetMirrorAudioVariants(variants?.variants || [])
         .map((entry) => {
           const params = new URLSearchParams({
             id,
@@ -85,11 +82,11 @@ export async function GET(request: Request) {
             year,
             season: String(season),
             episode: String(episode),
-            audioId: entry.dubSubjectId!,
-            audioPath: entry.detailPath!,
+            audioId: entry.dubSubjectId,
+            audioPath: entry.detailPath,
           });
           return {
-            id: entry.dubSubjectId!,
+            id: entry.dubSubjectId,
             label: audioLabel(entry.language),
             resolveUrl: `/api/netmirror/title?${params.toString()}`,
           };

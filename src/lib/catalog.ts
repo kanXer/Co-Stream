@@ -218,6 +218,8 @@ export async function getMediaDetails(type: MediaType, id: string): Promise<Medi
         downloadUrl: proxiedMediaPath((resolved.streams.find((stream) => stream.resolution === '360p') || resolved.streams.find((stream) => stream.resolution === '480p') || resolved.streams.at(-1))?.url || resolved.streamUrl),
         mimeType: 'video/mp4',
         downloadable: true,
+        resolvedAt: Date.now(),
+        selectedAudio: resolved.audioLanguage?.replace(/\s+dub$/i, '') || 'Original',
       },
       related: [],
     };

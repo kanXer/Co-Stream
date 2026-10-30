@@ -67,6 +67,8 @@ export type NetMirrorResolvedStream = {
   resolution: string;
   streams: Array<{ url: string; resolution: string }>;
   captions: Array<{ id: string; language: string; label: string; url: string }>;
+  audioSubjectId?: string;
+  audioLanguage?: string;
 };
 
 export type NetMirrorVariant = {
@@ -76,12 +78,39 @@ export type NetMirrorVariant = {
   detailPath?: string;
 };
 
+export type NetMirrorAudioVariant = NetMirrorVariant & {
+  dubSubjectId: string;
+  detailPath: string;
+};
+
 export type NetMirrorVariants = {
   ok: boolean;
   defaultSubjectId?: string;
   defaultDetailPath?: string;
   variants?: NetMirrorVariant[];
 };
+
+function audioVariantRank(variant: NetMirrorVariant) {
+  const language = (variant.language || '').toLowerCase();
+  if (/\bhindi\b/.test(language) && !/\bsub(?:title)?s?\b/.test(language)) return 0;
+  if (/\benglish\b/.test(language) && !/\bsub(?:title)?s?\b/.test(language)) return 1;
+  if (language === 'default' || variant.isOriginal || /\boriginal\b/.test(language)) return 2;
+  return 3;
+}
+
+export function orderedNetMirrorAudioVariants(variants: NetMirrorVariant[]): NetMirrorAudioVariant[] {
+  return variants
+    .filter((variant): variant is NetMirrorAudioVariant => Boolean(
+      variant.dubSubjectId
+      && variant.detailPath
+      && (
+        variant.language === 'Default'
+        || variant.isOriginal
+        || /dub|original/i.test(variant.language || '')
+      )
+    ))
+    .sort((left, right) => audioVariantRank(left) - audioVariantRank(right));
+}
 
 export type NetMirrorTitleMetadata = {
   ok: boolean;
@@ -540,21 +569,39 @@ export async function resolveCurrentNetMirrorStream(options: {
     options.year,
   );
   let audioConfig: Parameters<typeof getCurrentNetMirrorEmbed>[4];
-  if (options.audioSubjectId && options.audioDetailPath) {
+  let selectedAudioSubjectId: string | undefined;
+  let selectedAudioLanguage: string | undefined;
+  try {
     const variants = await getCurrentNetMirrorVariants(
       resolved.tmdbId,
       resolved.type,
       options.season || 1,
       options.episode || 1,
     );
-    if (variants.defaultSubjectId && variants.defaultDetailPath) {
+    const orderedAudio = orderedNetMirrorAudioVariants(variants.variants || []);
+    const selectedVariant = options.audioSubjectId
+      ? orderedAudio.find((variant) => variant.dubSubjectId === options.audioSubjectId)
+      : orderedAudio[0];
+    selectedAudioSubjectId = options.audioSubjectId || selectedVariant?.dubSubjectId;
+    selectedAudioLanguage = selectedVariant?.language;
+    const selectedDetailPath = options.audioDetailPath || selectedVariant?.detailPath;
+
+    if (
+      selectedAudioSubjectId
+      && selectedDetailPath
+      && variants.defaultSubjectId
+      && variants.defaultDetailPath
+      && selectedAudioSubjectId !== variants.defaultSubjectId
+    ) {
       audioConfig = {
-        subjectId: options.audioSubjectId,
-        detailPath: options.audioDetailPath,
+        subjectId: selectedAudioSubjectId,
+        detailPath: selectedDetailPath,
         defaultSubjectId: variants.defaultSubjectId,
         defaultDetailPath: variants.defaultDetailPath,
       };
     }
+  } catch {
+    // Variant discovery is optional; the default source remains playable.
   }
   const embed = await getCurrentNetMirrorEmbed(
     resolved.tmdbId,
@@ -612,6 +659,8 @@ export async function resolveCurrentNetMirrorStream(options: {
       resolution: stream.resolution ? `${stream.resolution}p` : 'Auto',
     })),
     captions,
+    audioSubjectId: selectedAudioSubjectId,
+    audioLanguage: selectedAudioLanguage,
   };
 }
 
