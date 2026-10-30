@@ -778,8 +778,10 @@ export function VideoPlayer() {
   }, [isExpanded, source]);
 
   useEffect(() => {
+    // Tablets (especially iPad Safari) use webkit-prefixed fullscreen events.
     const onFullscreen = () => {
-      const active = Boolean(document.fullscreenElement);
+      const doc = document as Document & { webkitFullscreenElement?: Element };
+      const active = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
       setIsBrowserFullscreen(active);
       const orientation = screen.orientation as ScreenOrientation & {
         lock?: (value: string) => Promise<void>;
@@ -788,7 +790,11 @@ export function VideoPlayer() {
       else orientation.unlock?.();
     };
     document.addEventListener('fullscreenchange', onFullscreen);
-    return () => document.removeEventListener('fullscreenchange', onFullscreen);
+    document.addEventListener('webkitfullscreenchange', onFullscreen);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreen);
+      document.removeEventListener('webkitfullscreenchange', onFullscreen);
+    };
   }, []);
 
   useEffect(() => () => {
@@ -1163,20 +1169,47 @@ export function VideoPlayer() {
       youtubePlayerRef.current?.pauseVideo();
     }
 
+    // Cross-browser / cross-tablet fullscreen helper types
+    type WebkitDoc = Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => void;
+    };
+    type WebkitEl = Element & {
+      webkitRequestFullscreen?: () => Promise<void>;
+    };
+
+    const doc = document as WebkitDoc;
+    const stageEl = stageRef.current as WebkitEl | null;
+    const isFs = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
+
     try {
-      if (!document.fullscreenElement) {
-        await stageRef.current?.requestFullscreen({ navigationUI: 'hide' });
+      if (!isFs) {
+        // Try standard API first (Chrome/Firefox/new Safari), then webkit
+        // (iPad Safari ≤15), then fall back to native video fullscreen.
+        if (stageEl?.requestFullscreen) {
+          // Avoid passing options object — older WebKit throws on unknown options.
+          await stageEl.requestFullscreen();
+        } else if (stageEl?.webkitRequestFullscreen) {
+          await stageEl.webkitRequestFullscreen();
+        } else {
+          // Last resort: iOS native video fullscreen
+          const nativeVideo = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+          nativeVideo?.webkitEnterFullscreen?.();
+        }
         const orientation = screen.orientation as ScreenOrientation & {
           lock?: (value: string) => Promise<void>;
         };
         await orientation.lock?.('landscape').catch(() => undefined);
       } else {
         screen.orientation.unlock?.();
-        await document.exitFullscreen().catch(() => undefined);
+        if (document.exitFullscreen) {
+          await document.exitFullscreen().catch(() => undefined);
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        }
       }
     } catch {
-      const nativeVideo = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-      nativeVideo?.webkitEnterFullscreen?.();
+      // Unexpected error — silently ignore so finally block always runs.
     } finally {
       await waitForViewportToSettle();
       setHeldVideoFrame(null);
