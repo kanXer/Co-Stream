@@ -44,6 +44,7 @@ export type NetMirrorEmbed = {
   tmdbId?: number;
   title?: string;
   year?: string;
+  imdb?: string;
   type?: 'movie' | 'tv';
   poster?: string;
   mp4?: string;
@@ -52,6 +53,10 @@ export type NetMirrorEmbed = {
   captions?: Array<{ lang?: string; name?: string; url?: string; source?: string }>;
   subjectId?: string;
   detailPath?: string;
+  /** True when NetMirror has the title in catalog but no stream source yet (coming soon / geo-restricted). */
+  noSource?: boolean;
+  /** Human-readable CTA from NetMirror, e.g. "Coming Soon", "Watch Now". */
+  cta?: string;
   error?: string;
 };
 
@@ -658,7 +663,50 @@ export async function resolveCurrentNetMirrorStream(options: {
   if (!candidates.length && embed.mp4) {
     candidates.push({ url: embed.mp4, resolution: Number(embed.resolution) || 0 });
   }
-  if (!embed.ok || !candidates.length) {
+
+  // Fallback: If current NetMirror embed API has no stream (or reports noSource like
+  // for Jailer 2), check NetMirror's classic CDN playlist (net52.cc) using the title's
+  // IMDb id (if present in embed) or by classic title search.
+  if (!candidates.length) {
+    try {
+      let netId = embed.imdb?.trim() || '';
+      if (!netId && options.title) {
+        const searchMatches = await searchNetMirror(options.title).catch(() => []);
+        if (searchMatches.length > 0) {
+          const wanted = normalizedTitle(options.title);
+          const match = searchMatches.find((m) => normalizedTitle(m.title) === wanted) || searchMatches[0];
+          if (match?.id) {
+            netId = match.id;
+          }
+        }
+      }
+
+      if (netId) {
+        const playlist = await getNetMirrorPlaylist(netId);
+        if (playlist.sources && playlist.sources.length > 0) {
+          const config = await getNetMirrorConfig();
+          const baseOrigin = playlist.origin || config.origin || 'https://net52.cc';
+          for (const s of playlist.sources) {
+            if (s.file) {
+              const fullUrl = s.file.startsWith('http') ? s.file : new URL(s.file, baseOrigin).toString();
+              const resNum = Number.parseInt(s.label || '', 10)
+                || (/full\s*hd/i.test(s.label || '') ? 1080 : /mid\s*hd/i.test(s.label || '') ? 720 : /low\s*hd/i.test(s.label || '') ? 480 : 0);
+              candidates.push({ url: fullUrl, resolution: resNum });
+            }
+          }
+        }
+      }
+    } catch (fallbackError) {
+      console.warn('NetMirror classic playlist fallback failed:', fallbackError);
+    }
+  }
+
+  if (!candidates.length) {
+    // noSource means NetMirror has this title in its catalog but no stream
+    // yet — typically "Coming Soon" or geo-restricted content.
+    if (embed.noSource) {
+      throw new Error(`"${embed.title || options.title}" is not yet available to stream on NetMirror.`);
+    }
     throw new Error(embed.error || 'No playable NetMirror stream is available for this title.');
   }
 
@@ -758,9 +806,9 @@ export function isAllowedNetMirrorTarget(target: string) {
     if (CURRENT_MEDIA_HOST.test(host)) return true;
     if (ALLOWED_CDN_HOST.test(host)) return true;
     // Audio CDNs rotate through generic .top hostnames (e.g. makhi4.top) and
-    // still use NetMirror's /files/<id>/... layout.
-    if (host.endsWith('.top') && /^\/[a-z0-9.-]*\/?files\/\d+\//i.test(url.pathname)) return true;
-    if (host.endsWith('.top') && /^\/files\/\d+\//i.test(url.pathname)) return true;
+    // still use NetMirror's /files/<id>/... layout (including IMDb ids like tt33318732).
+    if (host.endsWith('.top') && /^\/[a-z0-9.-]*\/?files\/[a-z0-9._-]+\//i.test(url.pathname)) return true;
+    if (host.endsWith('.top') && /^\/files\/[a-z0-9._-]+\//i.test(url.pathname)) return true;
     return false;
   } catch {
     return false;
@@ -884,7 +932,7 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
   const mediaPath = (() => {
     try { return new URL(target).pathname.toLowerCase(); } catch { return ''; }
   })();
-  const isLegacySegment = url.hostname.endsWith('.top') && /\/files\/\d+\//i.test(url.pathname);
+  const isLegacySegment = url.hostname.endsWith('.top') && /\/files\/[a-z0-9._-]+\//i.test(url.pathname);
   const isTransportStream = isLegacySegment && /\.(jpg|jpeg|js|ts)$/.test(mediaPath) && !isManifest;
   const resolvedContentType = isTransportStream
     ? 'video/mp2t'

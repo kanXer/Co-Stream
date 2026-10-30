@@ -75,7 +75,125 @@ async function fillHindiAudioTitles(
   return picked;
 }
 
+const globalForCatalog = globalThis as typeof globalThis & {
+  __coHomeCatalogCache?: Map<string, { value: CatalogPayload; expires: number }>;
+  __coPlatformHindiCache?: Map<string, { value: { movies: NetMirrorCatalogItem[]; series: NetMirrorCatalogItem[] }; expires: number }>;
+  __coSpotlightCache?: Map<string, { value: MediaItem[]; expires: number }>;
+};
+
+const homeCatalogCache = globalForCatalog.__coHomeCatalogCache || new Map<string, { value: CatalogPayload; expires: number }>();
+globalForCatalog.__coHomeCatalogCache = homeCatalogCache;
+
+const platformHindiCache = globalForCatalog.__coPlatformHindiCache || new Map<string, { value: { movies: NetMirrorCatalogItem[]; series: NetMirrorCatalogItem[] }; expires: number }>();
+globalForCatalog.__coPlatformHindiCache = platformHindiCache;
+
+const spotlightCache = globalForCatalog.__coSpotlightCache || new Map<string, { value: MediaItem[]; expires: number }>();
+globalForCatalog.__coSpotlightCache = spotlightCache;
+
+/**
+ * Maps a catalog item for spotlight use, using TMDB image URLs directly
+ * at higher resolutions (w780 backdrop, w342 poster) — no NetMirror proxy needed.
+ */
+function mapSpotlightItem(item: NetMirrorCatalogItem): MediaItem {
+  const providerId = `tmdb:${item.type}:${item.tmdbId}`;
+  // TMDB image URLs come pre-formed as https://image.tmdb.org/t/p/<size>/<hash>
+  // Upgrade to higher resolution sizes for the hero banner.
+  const upgradeSize = (url: string | undefined, target: string): string | null => {
+    if (!url) return null;
+    // Already a full TMDB URL — just swap the size segment.
+    const tmdbMatch = url.match(/^(https:\/\/image\.tmdb\.org\/t\/p\/)([^/]+)(\/.*)/);
+    if (tmdbMatch) return `${tmdbMatch[1]}${target}${tmdbMatch[3]}`;
+    return url;
+  };
+  return {
+    id: `netmirror-spotlight-${providerId}`,
+    providerId,
+    mediaType: item.type,
+    title: item.title,
+    overview: item.overview || '',
+    year: item.year || '—',
+    rating: Number(item.rating) || 0,
+    posterUrl: upgradeSize(item.poster, 'w342'),
+    backdropUrl: upgradeSize(item.backdrop, 'w1280'),
+    genres: [],
+    durationSeconds: 0,
+    language: 'hi',
+    playback: null,
+  };
+}
+
+/**
+ * Returns a curated list of the latest big Indian movies for the home spotlight.
+ * Prioritises current-year and upcoming releases. Results are cached for 30 min.
+ */
+async function getSpotlightMovies(region = 'IN'): Promise<MediaItem[]> {
+  const cacheKey = `spotlight:${region}`;
+  const cached = spotlightCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) return cached.value;
+
+  const currentYear = new Date().getUTCFullYear();
+
+  // Fetch both current-year+upcoming and last-year big releases in parallel.
+  const [upcomingResult, recentResult, homeResult] = await Promise.allSettled([
+    discoverCurrentNetMirror({ type: 'movie', region, sort: 'release', yearFrom: currentYear, yearTo: currentYear + 1 }),
+    discoverCurrentNetMirror({ type: 'movie', region, sort: 'release', yearFrom: currentYear - 1, yearTo: currentYear }),
+    getCurrentNetMirrorHome(),
+  ]);
+
+  const upcoming = upcomingResult.status === 'fulfilled' ? upcomingResult.value : [];
+  const recent = recentResult.status === 'fulfilled' ? recentResult.value : [];
+
+  // Pull "coming soon" / "upcoming" rail items from the home rails if available.
+  const homeRails = homeResult.status === 'fulfilled' ? homeResult.value : [];
+  const comingSoonItems = homeRails
+    .filter((rail) => /coming soon|upcoming|new release|trending/i.test(rail.title))
+    .flatMap((rail) => rail.items)
+    .filter((item) => item.type === 'movie');
+
+  // Merge & deduplicate by tmdbId, prioritising upcoming > comingSoon > recent.
+  const seen = new Set<number>();
+  const merged: NetMirrorCatalogItem[] = [];
+  for (const item of [...upcoming, ...comingSoonItems, ...recent]) {
+    if (!item.tmdbId || seen.has(item.tmdbId)) continue;
+    // Must have at least a poster or backdrop to be shown in hero.
+    if (!item.poster && !item.backdrop) continue;
+    seen.add(item.tmdbId);
+    merged.push(item);
+    if (merged.length >= 8) break;
+  }
+
+  // If we couldn't pull enough from the API, pad with a curated hand-picked list
+  // of known big Indian titles (tmdbIds verified). These will dedup via `seen`.
+  const FALLBACK_TMDB_IDS: { tmdbId: number; title: string; year: string; type: 'movie' | 'tv' }[] = [
+    { tmdbId: 1234139, title: 'Jailer 2', year: '2026', type: 'movie' },
+    { tmdbId: 1213243, title: 'Toxic', year: '2026', type: 'movie' },
+    { tmdbId: 1109086, title: 'War 2', year: '2025', type: 'movie' },
+    { tmdbId: 857598,  title: 'Pushpa 2 - The Rule', year: '2024', type: 'movie' },
+    { tmdbId: 801688,  title: 'Kalki 2898-AD', year: '2024', type: 'movie' },
+    { tmdbId: 1112426, title: 'Stree 2', year: '2024', type: 'movie' },
+    { tmdbId: 1014214, title: 'Singham Again', year: '2024', type: 'movie' },
+  ];
+  for (const fb of FALLBACK_TMDB_IDS) {
+    if (seen.has(fb.tmdbId)) continue;
+    seen.add(fb.tmdbId);
+    merged.push({ tmdbId: fb.tmdbId, title: fb.title, year: fb.year, type: fb.type } as NetMirrorCatalogItem);
+    if (merged.length >= 8) break;
+  }
+
+  const items = merged.slice(0, 6).map(mapSpotlightItem);
+
+  if (spotlightCache.size > 50) spotlightCache.clear();
+  spotlightCache.set(cacheKey, { value: items, expires: Date.now() + 30 * 60 * 1000 });
+  return items;
+}
+
 async function getPlatformHindiRows(platform: StreamingPlatformId, region: string) {
+  const cacheKey = `${platform}:${region}`;
+  const cached = platformHindiCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return cached.value;
+  }
+
   const [curatedResult, movieResult, seriesResult] = await Promise.allSettled([
     getCurrentNetMirrorCurated(platform),
     discoverCurrentNetMirror({ type: 'movie', region, platform, sort: 'popularity' }),
@@ -88,7 +206,11 @@ async function getPlatformHindiRows(platform: StreamingPlatformId, region: strin
   const curatedMovies = uniqueCatalogItems(hindiMovieRails.flatMap((rail) => rail.items).filter((item) => item.type === 'movie'));
   const movies = await fillHindiAudioTitles(curatedMovies, platformMovies, 'movie');
   const series = platformSeries.slice(0, 10);
-  return { movies, series };
+  const result = { movies, series };
+
+  if (platformHindiCache.size > 100) platformHindiCache.clear();
+  platformHindiCache.set(cacheKey, { value: result, expires: Date.now() + 20 * 60 * 1000 });
+  return result;
 }
 
 export async function getHomeCatalog(
@@ -97,13 +219,23 @@ export async function getHomeCatalog(
   requestedPlatforms: string[] = ['Netflix', 'PrimeVideo'],
   view: 'home' | 'movie' | 'tv' = 'home',
 ): Promise<CatalogPayload> {
+  const platforms = requestedPlatforms.filter(isStreamingPlatformId) as StreamingPlatformId[];
+  const platformsKey = platforms.join(',');
+  const cacheKey = `${region}:${_language}:${platformsKey}:${view}`;
+  const cached = homeCatalogCache.get(cacheKey);
+  if (cached && cached.expires > Date.now()) {
+    return cached.value;
+  }
+
   try {
-    const platforms = requestedPlatforms.filter(isStreamingPlatformId) as StreamingPlatformId[];
     if (view === 'home') {
-      const platformRows = await Promise.all(platforms.map(async (platform) => ({
-        platform,
-        ...(await getPlatformHindiRows(platform, region)),
-      })));
+      const [platformRows, spotlight] = await Promise.all([
+        Promise.all(platforms.map(async (platform) => ({
+          platform,
+          ...(await getPlatformHindiRows(platform, region)),
+        }))),
+        getSpotlightMovies(region),
+      ]);
       const sections = platformRows.flatMap(({ platform, movies, series }) => ([
         {
           id: `top10-hindi-${platform}-movie`,
@@ -118,7 +250,10 @@ export async function getHomeCatalog(
           items: series.map((item) => mapCurrentItem(item)),
         },
       ]));
-      return { mode: 'netmirror', sections: sections.filter((section) => section.items.length > 0) };
+      const payload: CatalogPayload = { mode: 'netmirror', sections: sections.filter((section) => section.items.length > 0), spotlight };
+      if (homeCatalogCache.size > 100) homeCatalogCache.clear();
+      homeCatalogCache.set(cacheKey, { value: payload, expires: Date.now() + 15 * 60 * 1000 });
+      return payload;
     }
 
     const mediaType = view === 'tv' ? 'tv' : 'movie';
@@ -164,10 +299,13 @@ export async function getHomeCatalog(
       });
     });
 
-    return {
+    const payload: CatalogPayload = {
       mode: 'netmirror',
       sections: sections.filter((section) => section.items.length > 0),
     };
+    if (homeCatalogCache.size > 100) homeCatalogCache.clear();
+    homeCatalogCache.set(cacheKey, { value: payload, expires: Date.now() + 15 * 60 * 1000 });
+    return payload;
   } catch (error) {
     console.error('NetMirror home failed:', error);
     return { mode: 'netmirror', sections: [] };
@@ -216,7 +354,7 @@ export async function getMediaDetails(type: MediaType, id: string): Promise<Medi
         label: resolved.resolution,
         url: proxiedMediaPath(resolved.streamUrl),
         downloadUrl: proxiedMediaPath((resolved.streams.find((stream) => stream.resolution === '360p') || resolved.streams.find((stream) => stream.resolution === '480p') || resolved.streams.at(-1))?.url || resolved.streamUrl),
-        mimeType: 'video/mp4',
+        mimeType: resolved.streamUrl.includes('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
         downloadable: true,
         resolvedAt: Date.now(),
         selectedAudio: resolved.audioLanguage?.replace(/\s+dub$/i, '') || 'Original',

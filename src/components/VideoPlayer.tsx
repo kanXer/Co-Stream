@@ -316,15 +316,11 @@ export function VideoPlayer() {
 
     reportPlayback({ isLoading: true, isPlaying: false, error: null, currentTime: 0 });
     const isNetMirror = itemAtStart.id.startsWith('netmirror-');
-    const isLegacyNetMirrorHls = isNetMirror && Boolean(
-      itemAtStart.playback?.mimeType?.includes('mpegurl')
-      || itemAtStart.playback?.url?.includes('net52.cc'),
-    );
     const isFreshNetMirrorPlayback = Boolean(
       itemAtStart.playback?.resolvedAt
       && Date.now() - itemAtStart.playback.resolvedAt < 2 * 60 * 1000,
     );
-    const canReusePlayback = Boolean(itemAtStart.playback) && !isLegacyNetMirrorHls && (
+    const canReusePlayback = Boolean(itemAtStart.playback) && (
       !isNetMirror
       || isFreshNetMirrorPlayback
       || !navigator.onLine
