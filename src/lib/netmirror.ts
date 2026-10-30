@@ -734,6 +734,7 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
   if (range) headers.set('range', range);
   headers.set('User-Agent', 'okhttp/4.9.2 /OS.Gatu v3.0');
   headers.set('Referer', referer);
+  headers.set('Accept', '*/*');
 
   // A 6-8 MB segment can take a while on the upstream CDN. Give each attempt a
   // fresh timeout (reusing an aborted AbortController makes every retry fail
@@ -742,7 +743,11 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const { controller, clear } = withTimeout(30000);
     try {
-      upstream = await fetch(target, { headers, signal: controller.signal });
+      upstream = await fetch(target, {
+        headers,
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       clear();
       if (upstream.ok || upstream.status === 206) break;
       if (upstream.status !== 429 && upstream.status < 500) break;
@@ -753,11 +758,31 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
   }
   if (!upstream) {
-    return new Response('Upstream source is unavailable.', { status: 502 });
+    console.error('NetMirror proxy could not reach upstream.', {
+      host: url.hostname,
+      path: url.pathname,
+      region: process.env.VERCEL_REGION || 'local',
+    });
+    return new Response('Upstream source is unavailable.', {
+      status: 502,
+      headers: { 'Cache-Control': 'no-store' },
+    });
   }
 
   if (!upstream.ok && upstream.status !== 206) {
-    return new Response('Upstream source is unavailable.', { status: upstream.status === 429 ? 429 : 502 });
+    console.error('NetMirror proxy upstream rejected the request.', {
+      host: url.hostname,
+      path: url.pathname,
+      status: upstream.status,
+      region: process.env.VERCEL_REGION || 'local',
+    });
+    return new Response('Upstream source is unavailable.', {
+      status: upstream.status === 429 ? 429 : 502,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-NetMirror-Upstream-Status': String(upstream.status),
+      },
+    });
   }
 
   const contentType = upstream.headers.get('content-type') || '';
