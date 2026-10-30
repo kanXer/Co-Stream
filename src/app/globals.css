@@ -256,7 +256,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   background: color-mix(in srgb, var(--accent-soft) 78%, var(--panel));
 }
 .watch-shell .player-action { min-height: 3.5rem; border-radius: 1rem; }
-.watch-shell .watch-wide-action { min-height: 2.8rem; flex-direction: row; }
 .watch-queue-item { color: var(--text-muted); transition: background .18s ease, color .18s ease; }
 .watch-queue-item:hover { color: var(--text); background: color-mix(in srgb, var(--panel-elevated) 68%, transparent); }
 .watch-queue-item.active { color: var(--accent); background: var(--accent-soft); }

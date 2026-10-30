@@ -28,7 +28,6 @@ import {
   SkipForward,
   Sun,
   Settings2,
-  Users,
   Volume2,
   X,
 } from 'lucide-react';
@@ -36,7 +35,6 @@ import { useStream, type PlaybackController } from '@/context/StreamContext';
 import { OfflineButton } from '@/components/OfflineButton';
 import { getOfflinePlaybackUrl, isVideoDownloaded } from '@/lib/offlineStore';
 import Hls from 'hls.js';
-import { getRoomFromUrl, copyCoLink, getCoChannel, type CoWatchMessage } from '@/lib/coWatch';
 import type { MediaDetails, PlaybackSource } from '@/types';
 
 type YouTubePlayer = {
@@ -169,61 +167,6 @@ export function VideoPlayer() {
   const suppressTapRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentId = currentItem?.id || null;
-  const [coRoomId, setCoRoomId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCoRoomId(getRoomFromUrl());
-  }, []);
-
-  // Co-watch sync via BroadcastChannel (same origin)
-  useEffect(() => {
-    if (!coRoomId || !currentId) return;
-    const channel = getCoChannel(coRoomId);
-    if (!channel) return;
-    const handleMessage = (ev: MessageEvent) => {
-      const msg = ev.data as CoWatchMessage;
-      if (msg.roomId !== coRoomId || msg.itemId !== currentId) return;
-      if (msg.type === 'play') {
-        // No direct force play to avoid loops; UI will reflect via shared state
-      }
-      if (msg.type === 'pause') {
-        // noop
-      }
-      if (msg.type === 'seek' && typeof msg.time === 'number') {
-        seek(msg.time);
-      }
-    };
-    channel.addEventListener('message', handleMessage);
-    return () => channel.removeEventListener('message', handleMessage);
-  }, [coRoomId, currentId, seek]);
-
-  // Broadcast seek/play state for co-watch
-  useEffect(() => {
-    if (!coRoomId || !currentId) return;
-    const channel = getCoChannel(coRoomId);
-    if (!channel) return;
-    const msg: CoWatchMessage = {
-      type: isPlaying ? 'play' : 'pause',
-      roomId: coRoomId,
-      itemId: currentId,
-    };
-    channel.postMessage(msg);
-  }, [isPlaying, coRoomId, currentId]);
-
-  useEffect(() => {
-    if (!coRoomId || !currentId) return;
-    const channel = getCoChannel(coRoomId);
-    if (!channel) return;
-    const msg: CoWatchMessage = {
-      type: 'seek',
-      time: currentTime,
-      roomId: coRoomId,
-      itemId: currentId,
-    };
-    // throttle by not sending every frame; rely on seek actions
-    channel.postMessage(msg);
-  }, [currentTime, coRoomId, currentId]);
-
   // Resolve playback details. Catalog responses intentionally contain metadata
   // only; the title endpoint supplies the current signed playback source.
   useEffect(() => {
@@ -924,21 +867,6 @@ export function VideoPlayer() {
                     <button onClick={share} className="player-action"><Share2 size={17} /><span>Share</span></button>
                     <button onClick={cycleThemeMode} className="player-action">{themeMode === 'DARK' ? <Sun size={17} /> : <Moon size={17} />}<span>Theme</span></button>
                   </div>
-                  <div className="mt-2">
-                    <button
-                      onClick={() => {
-                        const room = coRoomId || Math.random().toString(36).slice(2, 8);
-                        setCoRoomId(room);
-                        copyCoLink(room);
-                        alert('Co-watch link copied. Share it with friends to sync playback in this room.');
-                      }}
-                      className={`player-action watch-wide-action w-full ${coRoomId ? 'active' : ''}`}
-                      title="Start or copy co-watch room link"
-                    >
-                      <Users size={17} /><span>{coRoomId ? 'Co-watch' : 'Start Co-watch'}</span>
-                    </button>
-                  </div>
-
                   {(showQueue || queue.length > 1) && (
                     <div className="mt-5 pt-4 border-t border-[var(--line)]">
                       <div className="flex items-center justify-between"><p className="text-xs font-black">Up next</p><span className="watch-muted text-[9px]">{queueIndex + 1} / {queue.length}</span></div>
