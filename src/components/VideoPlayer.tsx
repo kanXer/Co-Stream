@@ -789,7 +789,7 @@ export function VideoPlayer() {
                 {isExpanded && source?.kind === 'direct' && directUrl && (
                   <div className={`absolute inset-0 z-10 transition-opacity duration-200 pointer-events-none ${showControls || playerMenu ? 'opacity-100' : 'opacity-0'}`}>
                     <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/80 to-transparent" />
-                    <div className="absolute inset-x-0 top-0 p-4 sm:p-5 flex items-start justify-between gap-4">
+                    <div className="player-controls-top absolute inset-x-0 top-0 p-4 sm:p-5 flex items-start justify-between gap-4">
                       <div className="min-w-0"><p className="text-[10px] uppercase tracking-[.18em] font-bold text-white/55">Now playing</p><p className="mt-1 text-sm sm:text-base font-bold text-white truncate max-w-[70vw]">{currentItem.title}</p></div>
                       <div className="pointer-events-auto flex items-center gap-1.5">
                         <span className="rounded-md bg-black/55 px-2 py-1 text-[10px] font-black text-white/80">{selectedQuality}</span>
@@ -806,7 +806,7 @@ export function VideoPlayer() {
                       <button onClick={() => { seek(currentTime + 10); revealControls(); }} className="pointer-events-auto relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-black/55 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-md"><FastForward size={22} /><span className="absolute text-[8px] font-black">10</span></button>
                     </div>
 
-                    <div className="absolute inset-x-0 bottom-0 pt-20 pb-3 sm:pb-4 px-3 sm:px-5 bg-gradient-to-t from-black/90 via-black/55 to-transparent">
+                    <div className="player-controls-bottom absolute inset-x-0 bottom-0 pt-20 pb-3 sm:pb-4 px-3 sm:px-5 bg-gradient-to-t from-black/90 via-black/55 to-transparent">
                       <input
                         aria-label="Seek video"
                         type="range"
