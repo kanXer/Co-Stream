@@ -24,6 +24,7 @@ export async function GET(request: Request) {
   const episodeSelected = searchParams.has('episode');
   const audioId = (searchParams.get('audioId') || '').trim();
   const audioPath = (searchParams.get('audioPath') || '').trim();
+  const playbackOnly = searchParams.get('playbackOnly') === '1';
 
   if (!id || id.length > 80) {
     return Response.json({ error: 'A valid NetMirror title id is required.' }, { status: 400 });
@@ -40,15 +41,7 @@ export async function GET(request: Request) {
       audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
       audioDetailPath: audioPath || undefined,
     });
-    const [metadata, variants] = await Promise.all([
-      getCurrentNetMirrorTitle(resolved.tmdbId, resolved.type).catch(() => null),
-      getCurrentNetMirrorVariants(resolved.tmdbId, resolved.type, season, episode).catch(() => null),
-    ]);
-    const seasonPayload = resolved.type === 'tv' && metadata?.initialSeason !== season
-      ? await getCurrentNetMirrorSeason(resolved.tmdbId, season).catch(() => null)
-      : null;
-    const rawEpisodes = seasonPayload?.episodes || metadata?.initialEpisodes || [];
-    const currentEpisode = rawEpisodes.find((entry) => Number(entry.episode) === episode);
+    const variants = await getCurrentNetMirrorVariants(resolved.tmdbId, resolved.type, season, episode).catch(() => null);
     const downloadStream = resolved.streams.find((stream) => stream.resolution === '360p')
       || resolved.streams.find((stream) => stream.resolution === '480p')
       || resolved.streams.find((stream) => stream.resolution === '720p')
@@ -84,6 +77,7 @@ export async function GET(request: Request) {
             episode: String(episode),
             audioId: entry.dubSubjectId,
             audioPath: entry.detailPath,
+            playbackOnly: '1',
           });
           return {
             id: entry.dubSubjectId,
@@ -92,6 +86,40 @@ export async function GET(request: Request) {
           };
         }),
     };
+
+    if (playbackOnly) {
+      const quickDetails: MediaDetails = {
+        id: `netmirror-${id}${episodeSelected && resolved.type === 'tv' ? `-s${season}e${episode}` : ''}`,
+        providerId: id,
+        mediaType: resolved.type,
+        title: episodeSelected && resolved.type === 'tv'
+          ? `${resolved.title} • S${season} E${episode}`
+          : resolved.title,
+        overview: resolved.overview,
+        year: resolved.year,
+        rating: resolved.rating,
+        posterUrl: resolved.posterUrl
+          ? proxiedMediaPath(resolved.posterUrl)
+          : `/api/poster?title=${encodeURIComponent(title)}`,
+        backdropUrl: null,
+        genres: [],
+        durationSeconds: 0,
+        language: 'en',
+        catalogId: resolved.tmdbId,
+        selectedSeason: resolved.type === 'tv' ? season : undefined,
+        selectedEpisode: resolved.type === 'tv' ? episode : undefined,
+        playback,
+        related: [],
+      };
+      return Response.json(quickDetails);
+    }
+
+    const metadata = await getCurrentNetMirrorTitle(resolved.tmdbId, resolved.type).catch(() => null);
+    const seasonPayload = resolved.type === 'tv' && metadata?.initialSeason !== season
+      ? await getCurrentNetMirrorSeason(resolved.tmdbId, season).catch(() => null)
+      : null;
+    const rawEpisodes = seasonPayload?.episodes || metadata?.initialEpisodes || [];
+    const currentEpisode = rawEpisodes.find((entry) => Number(entry.episode) === episode);
 
     const displayTitle = episodeSelected && resolved.type === 'tv'
       ? `${resolved.title} • S${season} E${episode}${currentEpisode?.name ? ` — ${currentEpisode.name}` : ''}`

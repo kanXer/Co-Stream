@@ -125,6 +125,28 @@ function buildEpisodeQueue(item: MediaItem, episodes: MediaEpisode[], season: nu
   });
 }
 
+function captureVideoFrame(video: HTMLVideoElement) {
+  if (!video.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return null;
+  try {
+    const scale = Math.min(1, 1280 / video.videoWidth);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', .88);
+  } catch {
+    return null;
+  }
+}
+
+function waitForViewportToSettle() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 120)));
+  });
+}
+
 export function VideoPlayer() {
   const {
     currentItem,
@@ -184,6 +206,8 @@ export function VideoPlayer() {
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
   const [switchingEpisode, setSwitchingEpisode] = useState<number | null>(null);
+  const [heldVideoFrame, setHeldVideoFrame] = useState<string | null>(null);
+  const [fullscreenTransitioning, setFullscreenTransitioning] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<YouTubePlayer | null>(null);
@@ -201,11 +225,26 @@ export function VideoPlayer() {
   const pinchAppliedRef = useRef(false);
   const suppressTapRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekHoldRef = useRef({ active: false, resume: false });
+  const episodeDetailsLoaderRef = useRef<(() => void) | null>(null);
+  const episodeDetailsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentId = currentItem?.id || null;
+
+  const releaseHeldSeek = (video: HTMLVideoElement) => {
+    if (!seekHoldRef.current.active) return;
+    const resume = seekHoldRef.current.resume;
+    seekHoldRef.current = { active: false, resume: false };
+    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
+    seekHoldTimerRef.current = null;
+    setHeldVideoFrame(null);
+    if (resume) video.play().catch(() => undefined);
+  };
 
   useEffect(() => {
     if (!currentItem || currentItem.mediaType !== 'tv') {
       setPlayerEpisodes([]);
+      setEpisodesLoading(false);
       setEpisodeError(null);
       return;
     }
@@ -213,6 +252,7 @@ export function VideoPlayer() {
     const episodes = currentItem.episodes || [];
     setEpisodeSeason(season);
     setPlayerEpisodes(episodes);
+    if (currentItem.episodes) setEpisodesLoading(false);
     setEpisodeError(null);
     if (episodes.length) {
       replaceQueue(buildEpisodeQueue(currentItem, episodes, season), currentItem.id);
@@ -264,31 +304,78 @@ export function VideoPlayer() {
       || isFreshNetMirrorPlayback
       || !navigator.onLine
     );
-    if (canReusePlayback) {
-      applySource(itemAtStart.playback);
-    } else {
-      let resolveUrl = `/api/title?type=${itemAtStart.mediaType}&id=${encodeURIComponent(itemAtStart.providerId)}`;
-      if (isNetMirror) {
-        const params = new URLSearchParams({
-          id: itemAtStart.providerId,
-          title: itemAtStart.title,
-          type: itemAtStart.mediaType,
-          year: itemAtStart.year,
-        });
-        if (itemAtStart.selectedSeason) params.set('season', String(itemAtStart.selectedSeason));
-        if (itemAtStart.selectedEpisode) params.set('episode', String(itemAtStart.selectedEpisode));
-        resolveUrl = `/api/netmirror/title?${params.toString()}`;
+    let resolveUrl = `/api/title?type=${itemAtStart.mediaType}&id=${encodeURIComponent(itemAtStart.providerId)}`;
+    if (isNetMirror) {
+      const params = new URLSearchParams({
+        id: itemAtStart.providerId,
+        title: itemAtStart.title,
+        type: itemAtStart.mediaType,
+        year: itemAtStart.year,
+      });
+      if (itemAtStart.selectedSeason) params.set('season', String(itemAtStart.selectedSeason));
+      if (itemAtStart.selectedEpisode) params.set('episode', String(itemAtStart.selectedEpisode));
+      resolveUrl = `/api/netmirror/title?${params.toString()}`;
+    }
+    const needsEpisodeDetails = isNetMirror && itemAtStart.mediaType === 'tv' && !itemAtStart.episodes;
+    if (needsEpisodeDetails) {
+      setEpisodesLoading(true);
+      setEpisodeError(null);
+    }
+    const loadEpisodeDetails = async () => {
+      if (!needsEpisodeDetails) return;
+      try {
+        const response = await fetch(resolveUrl);
+        const payload = await response.json() as MediaDetails & { error?: string };
+        if (!response.ok) throw new Error(payload.error || 'Could not load episodes.');
+        if (active) resolveCurrentItem(payload);
+      } catch (error) {
+        if (active) setEpisodeError(error instanceof Error ? error.message : 'Could not load episodes.');
+      } finally {
+        if (active) setEpisodesLoading(false);
       }
-      fetch(resolveUrl)
+    };
+    let episodeDetailsStarted = false;
+    const queueEpisodeDetails = () => {
+      if (!needsEpisodeDetails) return;
+      const start = () => {
+        if (!active || episodeDetailsStarted) return;
+        episodeDetailsStarted = true;
+        episodeDetailsLoaderRef.current = null;
+        if (episodeDetailsTimerRef.current) clearTimeout(episodeDetailsTimerRef.current);
+        episodeDetailsTimerRef.current = null;
+        void loadEpisodeDetails();
+      };
+      episodeDetailsLoaderRef.current = start;
+      episodeDetailsTimerRef.current = setTimeout(start, 6000);
+    };
+
+    if (canReusePlayback) {
+      queueEpisodeDetails();
+      void applySource(itemAtStart.playback);
+    } else {
+      const playbackUrl = isNetMirror
+        ? `${resolveUrl}${resolveUrl.includes('?') ? '&' : '?'}playbackOnly=1`
+        : resolveUrl;
+      fetch(playbackUrl)
         .then(async (response) => {
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not resolve playback.');
           return payload as MediaDetails;
         })
-        .then((details) => {
+        .then(async (details) => {
           if (!active) return;
-          resolveCurrentItem(details);
-          return applySource(details.playback);
+          const playableDetails = itemAtStart.mediaType === 'tv'
+            ? {
+                ...details,
+                seasons: details.seasons || itemAtStart.seasons,
+                episodes: details.episodes || itemAtStart.episodes,
+                seasonCount: details.seasonCount || itemAtStart.seasonCount,
+                episodeCount: details.episodeCount || itemAtStart.episodeCount,
+              }
+            : details;
+          resolveCurrentItem(playableDetails);
+          queueEpisodeDetails();
+          await applySource(playableDetails.playback);
         })
         .catch((error) => {
           if (!active) return;
@@ -301,7 +388,12 @@ export function VideoPlayer() {
         });
     }
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+      episodeDetailsLoaderRef.current = null;
+      if (episodeDetailsTimerRef.current) clearTimeout(episodeDetailsTimerRef.current);
+      episodeDetailsTimerRef.current = null;
+    };
     // Playback must only be re-resolved when the selected title changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentId]);
@@ -316,6 +408,10 @@ export function VideoPlayer() {
   useEffect(() => {
     setVideoFit('contain');
     setFitFeedback(null);
+    setHeldVideoFrame(null);
+    seekHoldRef.current = { active: false, resume: false };
+    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
+    seekHoldTimerRef.current = null;
   }, [currentId]);
 
   useEffect(() => {
@@ -375,6 +471,7 @@ export function VideoPlayer() {
       reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: false, error: null });
       video.volume = volume;
       video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+      episodeDetailsLoaderRef.current?.();
     };
 
     if (isHls && Hls.isSupported()) {
@@ -400,6 +497,7 @@ export function VideoPlayer() {
         reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: false, error: null });
         video.volume = volume;
         video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+        episodeDetailsLoaderRef.current?.();
       });
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
         if (data.fatal) reportPlayback({ isLoading: false, isPlaying: false, error: 'This HLS stream could not be played.' });
@@ -418,6 +516,7 @@ export function VideoPlayer() {
     };
     const onPause = () => reportPlayback({ isPlaying: false });
     const onWaiting = () => {
+      if (seekHoldRef.current.active) return;
       reportPlayback({ isLoading: true });
       if (stallTimer) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
@@ -429,6 +528,10 @@ export function VideoPlayer() {
       stallTimer = null;
       reportPlayback({ isLoading: false });
     };
+    const onSeeked = () => {
+      if (!seekHoldRef.current.active) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => releaseHeldSeek(video)));
+    };
     const onError = () => {
       if (!fallBackQuality()) reportPlayback({ isLoading: false, isPlaying: false, error: 'This video could not be played.' });
     };
@@ -439,6 +542,7 @@ export function VideoPlayer() {
     video.addEventListener('pause', onPause);
     video.addEventListener('waiting', onWaiting);
     video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('seeked', onSeeked);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', onError);
 
@@ -457,9 +561,14 @@ export function VideoPlayer() {
       video.removeEventListener('pause', onPause);
       video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', onError);
       if (stallTimer) clearTimeout(stallTimer);
+      if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
+      seekHoldTimerRef.current = null;
+      seekHoldRef.current = { active: false, resume: false };
+      setHeldVideoFrame(null);
       video.pause();
       hlsInstance?.destroy();
       registerController(null);
@@ -567,6 +676,10 @@ export function VideoPlayer() {
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
     if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
     if (suppressTimerRef.current) clearTimeout(suppressTimerRef.current);
+    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
+    seekHoldRef.current = { active: false, resume: false };
+    if (episodeDetailsTimerRef.current) clearTimeout(episodeDetailsTimerRef.current);
+    episodeDetailsLoaderRef.current = null;
   }, []);
 
   if (!currentItem) return null;
@@ -574,6 +687,10 @@ export function VideoPlayer() {
   const saved = isWatchlisted(currentItem.id);
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
   const background = currentItem.backdropUrl || currentItem.posterUrl;
+  const episodesPending = currentItem.mediaType === 'tv' && (
+    episodesLoading
+    || (!currentItem.episodes && !episodeError)
+  );
   const selectedSubtitleLabel = selectedSubtitle === 'off'
     ? 'Off'
     : source?.subtitles?.find((track) => track.id === selectedSubtitle)?.label || 'On';
@@ -656,14 +773,29 @@ export function VideoPlayer() {
         year: currentItem.year,
         season: String(episodeSeason),
         episode: String(episode.number),
+        playbackOnly: '1',
       });
       const response = await fetch(`/api/netmirror/title?${params.toString()}`);
       const payload = await response.json() as MediaDetails & { error?: string };
       if (!response.ok || !payload.playback?.url) {
         throw new Error(payload.error || 'Could not play this episode.');
       }
-      const episodes = payload.episodes?.length ? payload.episodes : playerEpisodes;
-      playItem(payload, buildEpisodeQueue(payload, episodes, episodeSeason));
+      const playableEpisode: MediaDetails = {
+        ...payload,
+        title: `${seriesTitle(currentItem.title)} • S${episodeSeason} E${episode.number}${episode.name ? ` — ${episode.name}` : ''}`,
+        overview: episode.overview || currentItem.overview,
+        posterUrl: payload.posterUrl || currentItem.posterUrl,
+        backdropUrl: episode.stillUrl || currentItem.backdropUrl,
+        genres: currentItem.genres,
+        durationSeconds: episode.runtimeMinutes * 60,
+        language: currentItem.language,
+        seasonCount: currentItem.seasonCount,
+        episodeCount: currentItem.episodeCount,
+        seasons: currentItem.seasons,
+        episodes: playerEpisodes,
+        related: [],
+      };
+      playItem(playableEpisode, buildEpisodeQueue(playableEpisode, playerEpisodes, episodeSeason));
     } catch (error) {
       setEpisodeError(error instanceof Error ? error.message : 'Could not play this episode.');
     } finally {
@@ -692,6 +824,22 @@ export function VideoPlayer() {
     setFitFeedback(fit === 'cover' ? 'Zoomed to fill' : 'Fit to screen');
     if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
     fitTimerRef.current = setTimeout(() => setFitFeedback(null), 900);
+  };
+
+  const seekWithFrameHold = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video || source?.kind !== 'direct') {
+      seek(seconds);
+      return;
+    }
+    if (!seekHoldRef.current.active) {
+      seekHoldRef.current = { active: true, resume: !video.paused || isPlaying };
+      setHeldVideoFrame(captureVideoFrame(video));
+      video.pause();
+    }
+    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
+    seekHoldTimerRef.current = setTimeout(() => releaseHeldSeek(video), 7000);
+    seek(Math.max(0, Math.min(seconds, video.duration || seconds)));
   };
 
   const handleStageTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -740,7 +888,7 @@ export function VideoPlayer() {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
       lastTapRef.current = null;
       const position = videoRef.current?.currentTime ?? currentTime;
-      seek(position + (side === 'left' ? -10 : 10));
+      seekWithFrameHold(position + (side === 'left' ? -10 : 10));
       setSeekFeedback(side);
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
       feedbackTimerRef.current = setTimeout(() => setSeekFeedback(null), 650);
@@ -767,20 +915,41 @@ export function VideoPlayer() {
   };
 
   const toggleFullscreen = async () => {
-    if (!document.fullscreenElement) {
-      try {
+    if (fullscreenTransitioning || seekHoldRef.current.active) return;
+    setFullscreenTransitioning(true);
+    const video = videoRef.current;
+    const shouldResume = source?.kind === 'youtube'
+      ? isPlaying
+      : Boolean(video && (!video.paused || isPlaying));
+    if (video) {
+      setHeldVideoFrame(captureVideoFrame(video));
+      video.pause();
+    } else if (source?.kind === 'youtube') {
+      youtubePlayerRef.current?.pauseVideo();
+    }
+
+    try {
+      if (!document.fullscreenElement) {
         await stageRef.current?.requestFullscreen();
         const orientation = screen.orientation as ScreenOrientation & {
           lock?: (value: string) => Promise<void>;
         };
         await orientation.lock?.('landscape').catch(() => undefined);
-      } catch {
-        const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
-        video?.webkitEnterFullscreen?.();
+      } else {
+        screen.orientation.unlock?.();
+        await document.exitFullscreen().catch(() => undefined);
       }
-    } else {
-      screen.orientation.unlock?.();
-      await document.exitFullscreen().catch(() => undefined);
+    } catch {
+      const nativeVideo = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+      nativeVideo?.webkitEnterFullscreen?.();
+    } finally {
+      await waitForViewportToSettle();
+      setHeldVideoFrame(null);
+      if (shouldResume) {
+        if (source?.kind === 'youtube') youtubePlayerRef.current?.playVideo();
+        else video?.play().catch(() => undefined);
+      }
+      setFullscreenTransitioning(false);
     }
   };
 
@@ -805,7 +974,7 @@ export function VideoPlayer() {
             <header className="watch-header sticky top-0 z-20 flex items-center justify-between px-4 sm:px-7 py-4">
               <button onClick={minimize} className="player-icon"><ChevronDown size={21} /></button>
               <div className="text-center min-w-0 px-3"><p className="watch-accent text-[9px] uppercase tracking-[0.2em] font-black">Now watching</p><p className="watch-muted text-xs font-bold truncate max-w-[52vw]">{currentItem.title}</p></div>
-              <div className="flex gap-2"><button onClick={() => currentItem.mediaType === 'tv' ? episodesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : setShowQueue(!showQueue)} className={`player-icon ${currentItem.mediaType !== 'tv' && showQueue ? 'active' : ''}`} title={currentItem.mediaType === 'tv' ? 'Seasons and episodes' : 'Playback queue'}><ListVideo size={19} /></button><button onClick={toggleFullscreen} className="player-icon">{isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
+              <div className="flex gap-2"><button onClick={() => currentItem.mediaType === 'tv' ? episodesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : setShowQueue(!showQueue)} className={`player-icon ${currentItem.mediaType !== 'tv' && showQueue ? 'active' : ''}`} title={currentItem.mediaType === 'tv' ? 'Seasons and episodes' : 'Playback queue'}><ListVideo size={19} /></button><button onClick={toggleFullscreen} disabled={fullscreenTransitioning} className="player-icon disabled:opacity-50">{fullscreenTransitioning ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
             </header>
           )}
 
@@ -838,6 +1007,16 @@ export function VideoPlayer() {
                     ))}
                   </video>
                 )}
+                {source?.kind === 'direct' && heldVideoFrame && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-[5] bg-black bg-center bg-no-repeat"
+                    style={{
+                      backgroundImage: `url(${heldVideoFrame})`,
+                      backgroundSize: videoFit === 'cover' ? 'cover' : 'contain',
+                    }}
+                  />
+                )}
                 {source?.kind === 'youtube' && (
                   <div key={`${currentItem.id}-${source.videoId}`} ref={youtubeContainerRef} className="w-full h-full" />
                 )}
@@ -861,11 +1040,11 @@ export function VideoPlayer() {
                     </div>
 
                     <div className="absolute inset-0 flex items-center justify-center gap-5 sm:gap-8">
-                      <button onClick={() => { seek(currentTime - 10); revealControls(); }} className="pointer-events-auto relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-black/55 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-md"><Rewind size={22} /><span className="absolute text-[8px] font-black">10</span></button>
+                      <button onClick={() => { seekWithFrameHold((videoRef.current?.currentTime ?? currentTime) - 10); revealControls(); }} className="pointer-events-auto relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-black/55 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-md"><Rewind size={22} /><span className="absolute text-[8px] font-black">10</span></button>
                       <button onClick={animatedTogglePlay} disabled={switchingSource} className="pointer-events-auto w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white/95 hover:bg-white text-black flex items-center justify-center shadow-2xl transition-transform active:scale-90 disabled:opacity-60">
                         {isLoading || switchingSource ? <span className="w-7 h-7 rounded-full border-3 border-black/25 border-t-black animate-spin" /> : isPlaying ? <Pause size={32} className="fill-current" /> : <Play size={32} className="fill-current ml-1" />}
                       </button>
-                      <button onClick={() => { seek(currentTime + 10); revealControls(); }} className="pointer-events-auto relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-black/55 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-md"><FastForward size={22} /><span className="absolute text-[8px] font-black">10</span></button>
+                      <button onClick={() => { seekWithFrameHold((videoRef.current?.currentTime ?? currentTime) + 10); revealControls(); }} className="pointer-events-auto relative w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-black/55 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-md"><FastForward size={22} /><span className="absolute text-[8px] font-black">10</span></button>
                     </div>
 
                     <div className="player-controls-bottom absolute inset-x-0 bottom-0 pt-20 pb-3 sm:pb-4 px-3 sm:px-5 bg-gradient-to-t from-black/90 via-black/55 to-transparent">
@@ -876,7 +1055,7 @@ export function VideoPlayer() {
                         max={duration || 100}
                         step="0.1"
                         value={Math.min(currentTime, duration || 100)}
-                        onChange={(event) => seek(Number(event.target.value))}
+                        onChange={(event) => seekWithFrameHold(Number(event.target.value))}
                         className="co-slider pointer-events-auto w-full"
                         style={{ '--fill': `${progress}%` } as React.CSSProperties}
                       />
@@ -887,7 +1066,7 @@ export function VideoPlayer() {
                           <span className="text-[10px] sm:text-xs font-medium text-white/80 tabular-nums">{formatTime(currentTime)} / {formatTime(duration)}</span>
                         </div>
                         <div className="flex items-center gap-0.5 sm:gap-1 pointer-events-auto">
-                          <button onClick={toggleFullscreen} className="player-control-icon" title="Fullscreen">{isBrowserFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}</button>
+                          <button onClick={toggleFullscreen} disabled={fullscreenTransitioning} className="player-control-icon disabled:opacity-50" title="Fullscreen">{fullscreenTransitioning ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : isBrowserFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}</button>
                         </div>
                       </div>
                     </div>
@@ -959,29 +1138,39 @@ export function VideoPlayer() {
                       <p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">Seasons & episodes</p>
                       <h3 className="mt-1 text-lg font-black">Season {episodeSeason}</h3>
                     </div>
-                    <span className="watch-muted rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-bold">
-                      {playerEpisodes.length || currentItem.episodeCount || 0} episodes
-                    </span>
+                    {episodesPending
+                      ? <span className="h-7 w-24 animate-pulse rounded-full bg-[var(--line)]/70" />
+                      : <span className="watch-muted rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-bold">{playerEpisodes.length || currentItem.episodeCount || 0} episodes</span>}
                   </div>
 
                   <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
-                    {(currentItem.seasons?.length
-                      ? currentItem.seasons
-                      : [{ number: episodeSeason, name: `Season ${episodeSeason}`, episodeCount: playerEpisodes.length }]
-                    ).map((season) => (
-                      <button
-                        key={season.number}
-                        onClick={() => void loadPlayerSeason(season.number)}
-                        disabled={episodesLoading}
-                        className={`watch-season-chip shrink-0 rounded-full px-4 py-2 text-[11px] font-black ${season.number === episodeSeason ? 'active' : ''}`}
-                      >
-                        S{season.number}<span className="ml-1.5 font-semibold opacity-60">{season.episodeCount || ''}</span>
-                      </button>
-                    ))}
+                    {episodesPending
+                      ? [0, 1, 2].map((index) => <span key={index} className="h-9 w-20 shrink-0 animate-pulse rounded-full bg-[var(--line)]/70" />)
+                      : (currentItem.seasons?.length
+                          ? currentItem.seasons
+                          : [{ number: episodeSeason, name: `Season ${episodeSeason}`, episodeCount: playerEpisodes.length }]
+                        ).map((season) => (
+                          <button
+                            key={season.number}
+                            onClick={() => void loadPlayerSeason(season.number)}
+                            disabled={episodesLoading}
+                            className={`watch-season-chip shrink-0 rounded-full px-4 py-2 text-[11px] font-black ${season.number === episodeSeason ? 'active' : ''}`}
+                          >
+                            S{season.number}<span className="ml-1.5 font-semibold opacity-60">{season.episodeCount || ''}</span>
+                          </button>
+                        ))}
                   </div>
 
-                  {episodesLoading ? (
-                    <div className="watch-muted flex min-h-36 items-center justify-center gap-2 text-xs font-bold"><span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />Loading episodes…</div>
+                  {episodesPending ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {[0, 1, 2, 3].map((index) => (
+                        <div key={index} className="flex animate-pulse items-center gap-3 rounded-2xl border border-[var(--line)] p-2">
+                          <span className="h-16 w-24 shrink-0 rounded-xl bg-[var(--line)]/75" />
+                          <span className="min-w-0 flex-1 space-y-2"><span className="block h-3 w-3/4 rounded-full bg-[var(--line)]/75" /><span className="block h-2 w-1/2 rounded-full bg-[var(--line)]/55" /></span>
+                          <span className="h-8 w-8 shrink-0 rounded-full bg-[var(--line)]/70" />
+                        </div>
+                      ))}
+                    </div>
                   ) : playerEpisodes.length ? (
                     <div className="no-scrollbar mt-3 grid max-h-[28rem] gap-2 overflow-y-auto sm:grid-cols-2">
                       {playerEpisodes.map((episode) => {
@@ -1052,7 +1241,7 @@ export function VideoPlayer() {
       </div>
 
       {!isExpanded && (
-        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-40 bottom-[calc(4.55rem+env(safe-area-inset-bottom,0px))] rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.3)] overflow-hidden">
+        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-50 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:bottom-5 rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.3)] overflow-hidden">
           <div className="flex items-center gap-3 p-2.5">
             <button onClick={() => setIsExpanded(true)} className="relative w-16 h-11 rounded-xl overflow-hidden bg-[var(--panel)] shrink-0">
               {background ? <Image src={background} alt="" fill sizes="64px" className="object-cover" /> : <Play size={18} />}
@@ -1071,11 +1260,11 @@ export function VideoPlayer() {
             <button onClick={nextItem} className="icon-button"><SkipForward size={18} className="fill-current" /></button>
             <button onClick={() => setIsExpanded(true)} className="icon-button hidden sm:flex"><Expand size={17} /></button>
           </div>
-          <div className="px-2.5 pb-2.5 pt-0.5">
+          <div className="relative z-10 border-t border-[var(--line)] bg-[var(--panel)]/45 px-2.5 pb-2.5 pt-2">
             <div className="h-1.5 rounded-full overflow-hidden bg-[var(--line)] relative cursor-pointer" onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-              seek((duration || 1) * percent);
+              seekWithFrameHold((duration || 1) * percent);
             }}>
               <div className="h-full bg-[var(--accent)] absolute inset-y-0 left-0 rounded-full" style={{ width: `${progress}%` }} />
             </div>
