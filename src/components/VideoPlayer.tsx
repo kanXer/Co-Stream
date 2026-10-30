@@ -34,6 +34,7 @@ import {
 import { useStream, type PlaybackController } from '@/context/StreamContext';
 import { OfflineButton } from '@/components/OfflineButton';
 import { getOfflinePlaybackUrl, isVideoDownloaded } from '@/lib/offlineStore';
+import { resolveNetMirrorPlayback } from '@/lib/playbackClient';
 import Hls from 'hls.js';
 import type { MediaDetails, MediaEpisode, MediaItem, PlaybackSource } from '@/types';
 
@@ -353,15 +354,14 @@ export function VideoPlayer() {
       queueEpisodeDetails();
       void applySource(itemAtStart.playback);
     } else {
-      const playbackUrl = isNetMirror
-        ? `${resolveUrl}${resolveUrl.includes('?') ? '&' : '?'}playbackOnly=1`
-        : resolveUrl;
-      fetch(playbackUrl)
-        .then(async (response) => {
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || 'Could not resolve playback.');
-          return payload as MediaDetails;
-        })
+      const playbackRequest = isNetMirror
+        ? resolveNetMirrorPlayback(itemAtStart)
+        : fetch(resolveUrl).then(async (response) => {
+            const payload = await response.json() as MediaDetails & { error?: string };
+            if (!response.ok) throw new Error(payload.error || 'Could not resolve playback.');
+            return payload;
+          });
+      playbackRequest
         .then(async (details) => {
           if (!active) return;
           const playableDetails = itemAtStart.mediaType === 'tv'

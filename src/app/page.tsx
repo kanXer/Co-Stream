@@ -33,6 +33,7 @@ import {
   isStreamingPlatformId,
   type StreamingPlatformId,
 } from '@/lib/platforms';
+import { prefetchNetMirrorPlayback } from '@/lib/playbackClient';
 import type { CatalogPayload, MediaItem } from '@/types';
 
 type Tab = 'home' | 'movie' | 'tv' | 'search' | 'offline';
@@ -171,6 +172,11 @@ export default function HomePage() {
     const hour = new Date().getHours();
     setGreeting(hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
   }, []);
+  useEffect(() => {
+    if (!featured) return;
+    const timer = window.setTimeout(() => prefetchNetMirrorPlayback(featured), 450);
+    return () => window.clearTimeout(timer);
+  }, [featured]);
 
   return (
     <div className={`min-h-screen min-w-0 max-w-full overflow-x-clip text-[var(--text)] ${currentItem ? 'pb-52' : 'pb-28'}`}>

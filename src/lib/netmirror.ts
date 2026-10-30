@@ -183,7 +183,11 @@ function withTimeout(signalMs: number) {
   return { controller, clear: () => clearTimeout(timer) };
 }
 
-async function fetchCurrentNetMirrorJson<T>(path: string, timeoutMs = 20000): Promise<T> {
+async function fetchCurrentNetMirrorJson<T>(
+  path: string,
+  timeoutMs = 20000,
+  revalidateSeconds = 0,
+): Promise<T> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -194,7 +198,8 @@ async function fetchCurrentNetMirrorJson<T>(path: string, timeoutMs = 20000): Pr
           Accept: 'application/json',
           'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36',
         },
-        cache: 'no-store',
+        cache: revalidateSeconds > 0 ? 'force-cache' : 'no-store',
+        ...(revalidateSeconds > 0 ? { next: { revalidate: revalidateSeconds } } : {}),
         signal: controller.signal,
       });
       clear();
@@ -334,12 +339,14 @@ const currentEmbedCache = new Map<string, { value: NetMirrorEmbed; expires: numb
 const currentVariantsCache = new Map<string, { value: NetMirrorVariants; expires: number }>();
 const currentTitleCache = new Map<string, { value: NetMirrorTitleMetadata; expires: number }>();
 const currentSeasonCache = new Map<string, { value: NetMirrorSeasonMetadata; expires: number }>();
+const currentEmbedRequests = new Map<string, Promise<NetMirrorEmbed>>();
+const currentVariantsRequests = new Map<string, Promise<NetMirrorVariants>>();
 let currentHomeCache: { value: NetMirrorHomeRail[]; expires: number } | null = null;
 
 export async function getCurrentNetMirrorHome(): Promise<NetMirrorHomeRail[]> {
   if (currentHomeCache && currentHomeCache.expires > Date.now()) return currentHomeCache.value;
 
-  const payload = await fetchCurrentNetMirrorJson<{ rails?: NetMirrorHomeRail[] }>('/api/catalog/aoneroom-home', 30000);
+  const payload = await fetchCurrentNetMirrorJson<{ rails?: NetMirrorHomeRail[] }>('/api/catalog/aoneroom-home', 30000, 300);
   const value = (payload.rails || [])
     .filter((rail) => rail.title && Array.isArray(rail.items) && rail.items.length)
     .map((rail) => ({
@@ -359,6 +366,8 @@ export async function searchCurrentNetMirror(query: string): Promise<NetMirrorCa
 
   const payload = await fetchCurrentNetMirrorJson<{ items?: NetMirrorCatalogItem[] }>(
     `/api/catalog/search-hybrid?q=${encodeURIComponent(query.trim())}`,
+    20000,
+    300,
   );
   const value = (payload.items || []).filter((item) => (
     Number.isInteger(Number(item.tmdbId))
@@ -396,6 +405,7 @@ export async function discoverCurrentNetMirror(options: {
   const payload = await fetchCurrentNetMirrorJson<{ items?: NetMirrorCatalogItem[] }>(
     `/api/catalog/discover?${params.toString()}`,
     30000,
+    600,
   );
   const value = (payload.items || []).filter((item) => (
     Number(item.tmdbId) > 0
@@ -413,6 +423,7 @@ export async function getCurrentNetMirrorCurated(platform: string) {
   const payload = await fetchCurrentNetMirrorJson<{ rails?: NetMirrorHomeRail[] }>(
     `/api/catalog/curated/${encodeURIComponent(platform)}`,
     30000,
+    1800,
   );
   const value = (payload.rails || []).filter((rail) => Array.isArray(rail.items) && rail.items.length > 0);
   if (currentCuratedCache.size > 30) currentCuratedCache.clear();
@@ -489,25 +500,36 @@ export async function getCurrentNetMirrorEmbed(
   const key = `${type}:${tmdbId}:${season}:${episode}:${audio?.subjectId || 'default'}`;
   const cached = currentEmbedCache.get(key);
   if (cached && cached.expires > Date.now()) return cached.value;
+  const pending = currentEmbedRequests.get(key);
+  if (pending) return pending;
 
-  const params = new URLSearchParams({
-    type,
-    se: String(season),
-    ep: String(episode),
-  });
-  if (audio) {
-    params.set('dub', audio.subjectId);
-    params.set('dubdp', audio.detailPath);
-    params.set('sid', audio.defaultSubjectId);
-    params.set('dp', audio.defaultDetailPath);
+  const request = (async () => {
+    const params = new URLSearchParams({
+      type,
+      se: String(season),
+      ep: String(episode),
+    });
+    if (audio) {
+      params.set('dub', audio.subjectId);
+      params.set('dubdp', audio.detailPath);
+      params.set('sid', audio.defaultSubjectId);
+      params.set('dp', audio.defaultDetailPath);
+    }
+    const value = await fetchCurrentNetMirrorJson<NetMirrorEmbed>(
+      `/api/embed-tmdb/${tmdbId}?${params.toString()}`,
+      30000,
+      60,
+    );
+    if (currentEmbedCache.size > 100) currentEmbedCache.clear();
+    currentEmbedCache.set(key, { value, expires: Date.now() + 2 * 60 * 1000 });
+    return value;
+  })();
+  currentEmbedRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (currentEmbedRequests.get(key) === request) currentEmbedRequests.delete(key);
   }
-  const value = await fetchCurrentNetMirrorJson<NetMirrorEmbed>(
-    `/api/embed-tmdb/${tmdbId}?${params.toString()}`,
-    30000,
-  );
-  if (currentEmbedCache.size > 100) currentEmbedCache.clear();
-  currentEmbedCache.set(key, { value, expires: Date.now() + 2 * 60 * 1000 });
-  return value;
 }
 
 export async function getCurrentNetMirrorVariants(
@@ -519,13 +541,25 @@ export async function getCurrentNetMirrorVariants(
   const key = `${type}:${tmdbId}:${season}:${episode}`;
   const cached = currentVariantsCache.get(key);
   if (cached && cached.expires > Date.now()) return cached.value;
-  const suffix = type === 'tv' ? `?se=${season}&ep=${episode}` : '';
-  const value = await fetchCurrentNetMirrorJson<NetMirrorVariants>(
-    `/api/variants-tmdb/${type}/${tmdbId}${suffix}`,
-  );
-  if (currentVariantsCache.size > 100) currentVariantsCache.clear();
-  currentVariantsCache.set(key, { value, expires: Date.now() + 10 * 60 * 1000 });
-  return value;
+  const pending = currentVariantsRequests.get(key);
+  if (pending) return pending;
+  const request = (async () => {
+    const suffix = type === 'tv' ? `?se=${season}&ep=${episode}` : '';
+    const value = await fetchCurrentNetMirrorJson<NetMirrorVariants>(
+      `/api/variants-tmdb/${type}/${tmdbId}${suffix}`,
+      20000,
+      600,
+    );
+    if (currentVariantsCache.size > 100) currentVariantsCache.clear();
+    currentVariantsCache.set(key, { value, expires: Date.now() + 10 * 60 * 1000 });
+    return value;
+  })();
+  currentVariantsRequests.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (currentVariantsRequests.get(key) === request) currentVariantsRequests.delete(key);
+  }
 }
 
 export async function getCurrentNetMirrorTitle(tmdbId: number, type: 'movie' | 'tv') {
@@ -534,6 +568,8 @@ export async function getCurrentNetMirrorTitle(tmdbId: number, type: 'movie' | '
   if (cached && cached.expires > Date.now()) return cached.value;
   const value = await fetchCurrentNetMirrorJson<NetMirrorTitleMetadata>(
     `/api/catalog/title/${type}/${tmdbId}`,
+    20000,
+    600,
   );
   if (currentTitleCache.size > 100) currentTitleCache.clear();
   currentTitleCache.set(key, { value, expires: Date.now() + 10 * 60 * 1000 });
@@ -546,6 +582,8 @@ export async function getCurrentNetMirrorSeason(tmdbId: number, season: number) 
   if (cached && cached.expires > Date.now()) return cached.value;
   const value = await fetchCurrentNetMirrorJson<NetMirrorSeasonMetadata>(
     `/api/catalog/season/${tmdbId}/${season}`,
+    20000,
+    600,
   );
   if (currentSeasonCache.size > 200) currentSeasonCache.clear();
   currentSeasonCache.set(key, { value, expires: Date.now() + 10 * 60 * 1000 });

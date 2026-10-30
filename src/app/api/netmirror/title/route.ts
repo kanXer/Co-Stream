@@ -8,6 +8,10 @@ import {
 } from '@/lib/netmirror';
 import type { MediaDetails, PlaybackSource } from '@/types';
 
+const PLAYBACK_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=45, stale-while-revalidate=60',
+};
+
 function audioLabel(value?: string) {
   if (!value || value === 'Default') return 'Original';
   return value.replace(/\s+dub$/i, '').replace(/\s+sub$/i, ' subtitles');
@@ -111,7 +115,7 @@ export async function GET(request: Request) {
         playback,
         related: [],
       };
-      return Response.json(quickDetails);
+      return Response.json(quickDetails, { headers: PLAYBACK_CACHE_HEADERS });
     }
 
     const metadata = await getCurrentNetMirrorTitle(resolved.tmdbId, resolved.type).catch(() => null);
@@ -176,7 +180,7 @@ export async function GET(request: Request) {
       related: [],
     };
 
-    return Response.json(details);
+    return Response.json(details, { headers: PLAYBACK_CACHE_HEADERS });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Could not resolve NetMirror title.' }, { status: 502 });
   }
