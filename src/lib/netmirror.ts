@@ -224,58 +224,11 @@ async function fetchCurrentNetMirrorJson<T>(
 }
 
 export async function getNetMirrorConfig(): Promise<NetMirrorConfig> {
-  if (cachedConfig && cachedConfig.expires > Date.now()) return cachedConfig.value;
-  if (globalForNetMirror.__netmirrorConfig && globalForNetMirror.__netmirrorConfig.expires > Date.now()) {
-    cachedConfig = globalForNetMirror.__netmirrorConfig;
-    return cachedConfig.value;
-  }
-
-  const attempts = HOSTS.map(async (host) => {
-    const { controller, clear } = withTimeout(5000);
-    try {
-      const response = await fetch(`${host}/check.php`, {
-        headers: { accept: 'application/json' },
-        signal: controller.signal,
-      });
-      clear();
-      if (!response.ok) throw new Error('bad status');
-      const payload = await response.json() as {
-        token_hash?: string;
-        stape?: string;
-        u?: string[];
-      };
-      if (!payload?.token_hash || !payload?.stape) throw new Error('bad payload');
-      const webViewUrl = decodeBase64(payload.token_hash);
-      const processorUrl = decodeBase64(payload.stape);
-      const sourceBases = (payload.u || []).map(decodeBase64);
-      const origin = new URL(webViewUrl).origin;
-      return { origin, processorUrl, sourceBases } as NetMirrorConfig;
-    } finally {
-      clear();
-    }
-  });
-
-  let value: NetMirrorConfig | null = null;
-  try {
-    value = await Promise.any(attempts);
-  } catch {
-    value = null;
-  }
-
-  const discovered = Boolean(value);
-  if (!value) {
-    value = {
-      origin: 'https://net52.cc',
-      processorUrl: 'https://net52.cc/streamtape.php',
-      sourceBases: ['https://streamtape.com', 'https://streamtape.net', 'https://streamtape.to', 'https://stape.fun'],
-    };
-  }
-
-  // Bootstrap hosts rotate and are expensive to probe (13 parallel requests).
-  // Successful discovery is stable for hours; fall back to a short retry window.
-  cachedConfig = { value, expires: Date.now() + (discovered ? 6 * 60 * 60 * 1000 : 5 * 60 * 1000) };
-  globalForNetMirror.__netmirrorConfig = cachedConfig;
-  return value;
+  return {
+    origin: 'https://net52.cc',
+    processorUrl: 'https://net52.cc/streamtape.php',
+    sourceBases: ['https://streamtape.com', 'https://streamtape.net', 'https://streamtape.to', 'https://stape.fun'],
+  };
 }
 
 const searchCache = new Map<string, { value: Array<{ id: string; title: string }>; expires: number }>();

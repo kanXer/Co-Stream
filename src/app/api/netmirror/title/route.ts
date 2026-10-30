@@ -9,7 +9,7 @@ import {
 import type { MediaDetails, PlaybackSource } from '@/types';
 
 const PLAYBACK_CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=45, stale-while-revalidate=60',
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
 };
 
 function audioLabel(value?: string) {
