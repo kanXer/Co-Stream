@@ -58,4 +58,9 @@ npm start
 
 ## Offline playback
 
-Only direct sources explicitly marked downloadable are stored in IndexedDB. Embedded YouTube trailers cannot be downloaded. Add production video sources only when you own the content or have distribution rights.
+Only direct sources explicitly marked downloadable can be saved. On supported
+Chrome/Android PWAs, Background Fetch keeps large video transfers running when
+the app is minimized and stores completed media in Cache Storage with metadata
+in IndexedDB. Other browsers fall back to foreground OPFS/IndexedDB downloads.
+Embedded YouTube trailers cannot be downloaded. Add production video sources
+only when you own the content or have distribution rights.

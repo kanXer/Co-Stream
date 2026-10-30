@@ -30,12 +30,42 @@ interface OfflineVideoRecord extends OfflineVideoMeta {
   videoBlob?: Blob | null;
   coverBlob: Blob | null;
   fileName?: string | null;
-  storageKind?: 'indexeddb' | 'opfs';
+  storageKind?: 'indexeddb' | 'opfs' | 'cache';
+  cacheUrl?: string | null;
+}
+
+interface BackgroundDownloadRecord {
+  id: string;
+  mediaId: string;
+  item: MediaItem;
+  playback: PlaybackSource;
+  videoUrl: string;
+  coverUrl: string | null;
+  createdAt: number;
+}
+
+interface BackgroundFetchRegistrationLike extends EventTarget {
+  id: string;
+  downloaded: number;
+  downloadTotal: number;
+}
+
+interface BackgroundFetchManagerLike {
+  fetch: (
+    id: string,
+    requests: RequestInfo[],
+    options?: { title?: string; icons?: Array<{ src: string; sizes?: string; type?: string; label?: string }> },
+  ) => Promise<BackgroundFetchRegistrationLike>;
+  get: (id: string) => Promise<BackgroundFetchRegistrationLike | undefined>;
+  getIds: () => Promise<string[]>;
 }
 
 const DB_NAME = 'co-stream-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'videos';
+const PENDING_STORE = 'pending';
+const BACKGROUND_PREFIX = 'co-offline-';
+const OFFLINE_MEDIA_CACHE = 'co-stream-offline-media-v1';
 const EVENT_NAME = 'co-downloads';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -44,6 +74,7 @@ const activeDownloads = new Map<string, ActiveDownload>();
 const listeners = new Set<() => void>();
 const playbackUrls = new Map<string, string>();
 const coverUrls = new Map<string, string>();
+let backgroundIntegrationReady = false;
 
 function getDb() {
   if (!dbPromise) {
@@ -51,6 +82,9 @@ function getDb() {
       upgrade(db) {
         if (!db.objectStoreNames.contains(STORE)) {
           db.createObjectStore(STORE, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(PENDING_STORE)) {
+          db.createObjectStore(PENDING_STORE, { keyPath: 'id' });
         }
       },
     });
@@ -70,16 +104,19 @@ function announceListChange() {
 }
 
 export function subscribeDownloads(listener: () => void) {
+  ensureBackgroundIntegration();
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
 export function getDownloadState(id: string | null | undefined): DownloadState {
+  ensureBackgroundIntegration();
   if (!id) return { status: 'idle', progress: 0 };
   return states.get(id) || { status: 'idle', progress: 0 };
 }
 
 export function getActiveDownloads() {
+  ensureBackgroundIntegration();
   return Array.from(activeDownloads.values());
 }
 
@@ -106,13 +143,136 @@ async function assertQuota(neededBytes: number) {
   }
 }
 
-function offlineFileName(id: string) {
+function offlineHash(id: string) {
   let hash = 2166136261;
   for (let index = 0; index < id.length; index += 1) {
     hash ^= id.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return `co-stream-${(hash >>> 0).toString(16)}.mp4`;
+  return (hash >>> 0).toString(16);
+}
+
+function offlineFileName(id: string) {
+  return `co-stream-${offlineHash(id)}.mp4`;
+}
+
+function backgroundDownloadId(id: string) {
+  return `${BACKGROUND_PREFIX}${offlineHash(id)}`;
+}
+
+async function getBackgroundFetchManager() {
+  if (
+    typeof window === 'undefined'
+    || !('serviceWorker' in navigator)
+    || !('BackgroundFetchManager' in window)
+  ) return null;
+  const registration = await Promise.race<ServiceWorkerRegistration | null>([
+    navigator.serviceWorker.ready,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+  ]);
+  if (!registration) return null;
+  return (registration as ServiceWorkerRegistration & {
+    backgroundFetch?: BackgroundFetchManagerLike;
+  }).backgroundFetch || null;
+}
+
+function attachBackgroundProgress(
+  registration: BackgroundFetchRegistrationLike,
+  pending: BackgroundDownloadRecord,
+) {
+  activeDownloads.set(pending.mediaId, {
+    item: pending.item,
+    state: { status: 'downloading', progress: -1 },
+  });
+  const update = () => {
+    setState(pending.mediaId, {
+      status: 'downloading',
+      progress: registration.downloadTotal > 0
+        ? Math.min(1, registration.downloaded / registration.downloadTotal)
+        : -1,
+    });
+  };
+  registration.addEventListener('progress', update);
+  update();
+}
+
+async function restoreBackgroundDownloads() {
+  try {
+    const manager = await getBackgroundFetchManager();
+    if (!manager) return;
+    const ids = await manager.getIds();
+    const db = await getDb();
+    await Promise.all(ids.filter((id) => id.startsWith(BACKGROUND_PREFIX)).map(async (id) => {
+      const [registration, pending] = await Promise.all([
+        manager.get(id),
+        db.get(PENDING_STORE, id) as Promise<BackgroundDownloadRecord | undefined>,
+      ]);
+      if (registration && pending) attachBackgroundProgress(registration, pending);
+    }));
+  } catch (_) {
+    // Foreground downloading remains available when restoration is unsupported.
+  }
+}
+
+function ensureBackgroundIntegration() {
+  if (backgroundIntegrationReady || typeof window === 'undefined') return;
+  backgroundIntegrationReady = true;
+  navigator.serviceWorker?.addEventListener('message', (event) => {
+    const message = event.data as { type?: string; mediaId?: string; error?: string } | null;
+    if (!message?.mediaId) return;
+    if (message.type === 'co-download-complete') {
+      activeDownloads.delete(message.mediaId);
+      setState(message.mediaId, { status: 'downloaded', progress: 1 });
+      announceListChange();
+    } else if (message.type === 'co-download-failed') {
+      activeDownloads.delete(message.mediaId);
+      setState(message.mediaId, {
+        status: 'error',
+        progress: 0,
+        error: message.error || 'Background download failed.',
+      });
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void restoreBackgroundDownloads();
+  });
+  void restoreBackgroundDownloads();
+}
+
+async function startBackgroundDownload(item: MediaItem, playback: PlaybackSource) {
+  const manager = await getBackgroundFetchManager();
+  if (!manager) return false;
+  const videoUrl = playback.downloadUrl || playback.url;
+  if (!videoUrl) return false;
+
+  const id = backgroundDownloadId(item.id);
+  const pending: BackgroundDownloadRecord = {
+    id,
+    mediaId: item.id,
+    item: { ...item, playback },
+    playback,
+    videoUrl: new URL(videoUrl, window.location.href).toString(),
+    coverUrl: item.posterUrl ? new URL(item.posterUrl, window.location.href).toString() : null,
+    createdAt: Date.now(),
+  };
+  const db = await getDb();
+  await db.put(PENDING_STORE, pending);
+  try {
+    const existing = await manager.get(id);
+    const registration = existing || await manager.fetch(
+      id,
+      [new Request(pending.videoUrl, { credentials: 'same-origin' })],
+      {
+        title: `Saving ${item.title}`.slice(0, 80),
+        icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png', label: 'Co-Stream download' }],
+      },
+    );
+    attachBackgroundProgress(registration, pending);
+    return true;
+  } catch (error) {
+    await db.delete(PENDING_STORE, id);
+    throw error;
+  }
 }
 
 async function downloadVideoWithProgress(
@@ -194,6 +354,7 @@ async function fetchCover(url: string | null): Promise<Blob | null> {
 }
 
 export async function startVideoDownload(item: MediaItem, source?: PlaybackSource | null) {
+  ensureBackgroundIntegration();
   const playback = source || item.playback;
   if (!playback || playback.kind !== 'direct' || !playback.url || !playback.downloadable) {
     setState(item.id, {
@@ -210,6 +371,12 @@ export async function startVideoDownload(item: MediaItem, source?: PlaybackSourc
   try {
     await requestPersistence();
     await assertQuota(20 * 1024 * 1024);
+
+    try {
+      if (await startBackgroundDownload(item, playback)) return;
+    } catch (_) {
+      // Permission or implementation failures fall back to the foreground path.
+    }
 
     const video = await downloadVideoWithProgress(playback.downloadUrl || playback.url, item.id, (received, total) => {
       setState(item.id, {
@@ -254,7 +421,7 @@ export async function getAllDownloadedVideos(): Promise<OfflineVideoMeta[]> {
     const db = await getDb();
     const records = await db.getAll(STORE) as OfflineVideoRecord[];
     return records
-      .map(({ videoBlob: _video, coverBlob: _cover, fileName: _file, storageKind: _storage, ...meta }) => meta)
+      .map(({ videoBlob: _video, coverBlob: _cover, fileName: _file, storageKind: _storage, cacheUrl: _cache, ...meta }) => meta)
       .sort((a, b) => b.downloadedAt - a.downloadedAt);
   } catch (_) {
     return [];
@@ -286,6 +453,11 @@ export async function getOfflinePlaybackUrl(id: string): Promise<string | null> 
       const handle = await root?.getFileHandle(record.fileName);
       media = await handle?.getFile() || null;
     }
+    if (!media && record.cacheUrl && 'caches' in window) {
+      const cache = await caches.open(OFFLINE_MEDIA_CACHE);
+      const response = await cache.match(record.cacheUrl, { ignoreVary: true });
+      media = await response?.blob() || null;
+    }
     if (!media) return null;
     const url = URL.createObjectURL(media);
     playbackUrls.set(id, url);
@@ -314,12 +486,17 @@ export async function deleteDownloadedVideo(id: string) {
   const db = await getDb();
   const record = await db.get(STORE, id) as OfflineVideoRecord | undefined;
   await db.delete(STORE, id);
+  await db.delete(PENDING_STORE, backgroundDownloadId(id));
   if (record?.fileName) {
     const storageWithDirectory = navigator.storage as StorageManager & {
       getDirectory?: () => Promise<FileSystemDirectoryHandle>;
     };
     const root = await storageWithDirectory.getDirectory?.();
     await root?.removeEntry(record.fileName).catch(() => undefined);
+  }
+  if (record?.cacheUrl && 'caches' in window) {
+    const cache = await caches.open(OFFLINE_MEDIA_CACHE);
+    await cache.delete(record.cacheUrl, { ignoreVary: true });
   }
   const playbackUrl = playbackUrls.get(id);
   if (playbackUrl) URL.revokeObjectURL(playbackUrl);

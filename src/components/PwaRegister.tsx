@@ -13,9 +13,11 @@ export default function PwaRegister() {
   const [dismissed, setDismissed] = useState(true);
 
   useEffect(() => {
+    const registerServiceWorker = () => navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     if ('serviceWorker' in navigator) {
       if (process.env.NODE_ENV === 'production') {
-        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined), { once: true });
+        if (document.readyState === 'complete') void registerServiceWorker();
+        else window.addEventListener('load', registerServiceWorker, { once: true });
       } else {
         navigator.serviceWorker.getRegistrations().then((registrations) => registrations.forEach((registration) => registration.unregister())).catch(() => undefined);
       }
@@ -29,6 +31,7 @@ export default function PwaRegister() {
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
     return () => {
+      window.removeEventListener('load', registerServiceWorker);
       window.removeEventListener('beforeinstallprompt', onPrompt);
       window.removeEventListener('appinstalled', onInstalled);
     };
