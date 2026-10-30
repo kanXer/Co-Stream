@@ -75,6 +75,7 @@ interface StreamContextValue {
   repeatMode: RepeatMode;
   shuffle: boolean;
   playItem: (item: MediaItem, queue?: MediaItem[], shuffleFirst?: boolean) => void;
+  replaceQueue: (items: MediaItem[], currentItemId?: string) => void;
   resolveCurrentItem: (item: MediaItem) => void;
   togglePlay: () => void;
   pause: () => void;
@@ -289,6 +290,16 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
       saveJson('co_recent', next);
       return next;
     });
+  }, []);
+
+  const replaceQueue = useCallback((items: MediaItem[], currentItemId?: string) => {
+    if (!items.length) return;
+    const activeId = currentItemId || currentRef.current?.id;
+    const index = Math.max(0, items.findIndex((item) => item.id === activeId));
+    queueRef.current = items;
+    queueIndexRef.current = index;
+    setQueue(items);
+    setQueueIndex(index);
   }, []);
 
   const pause = useCallback(() => controllerRef.current?.pause(), []);
@@ -539,6 +550,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
       repeatMode,
       shuffle,
       playItem,
+      replaceQueue,
       resolveCurrentItem,
       togglePlay,
       pause,

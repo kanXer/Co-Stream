@@ -259,6 +259,31 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .watch-queue-item { color: var(--text-muted); transition: background .18s ease, color .18s ease; }
 .watch-queue-item:hover { color: var(--text); background: color-mix(in srgb, var(--panel-elevated) 68%, transparent); }
 .watch-queue-item.active { color: var(--accent); background: var(--accent-soft); }
+.watch-season-chip {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-elevated) 72%, transparent);
+  color: var(--text-muted);
+  transition: color .18s ease, border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.watch-season-chip:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); transform: translateY(-1px); }
+.watch-season-chip.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: var(--accent-soft); }
+.watch-episode-card {
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  background: color-mix(in srgb, var(--panel-elevated) 62%, transparent);
+  color: var(--text);
+  transition: border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.watch-episode-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  background: color-mix(in srgb, var(--panel-elevated) 82%, var(--accent-soft));
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px color-mix(in srgb, #06251d 8%, transparent);
+}
+.watch-episode-card.active { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: var(--accent-soft); }
+.watch-episode-art { background: color-mix(in srgb, var(--accent-soft) 70%, var(--panel)); color: var(--accent); }
+.watch-episode-play { background: var(--accent-soft); color: var(--accent); transition: transform .18s ease, background .18s ease; }
+.watch-episode-card:hover .watch-episode-play { background: var(--accent); color: var(--accent-ink); transform: scale(1.05); }
+.watch-episode-card.active .watch-episode-play { background: var(--accent); color: var(--accent-ink); }
 .watch-timer-option { border-color: var(--line); background: color-mix(in srgb, var(--panel-elevated) 78%, transparent); color: var(--text-muted); }
 .watch-timer-option:hover { color: var(--text); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .watch-timer-option.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }

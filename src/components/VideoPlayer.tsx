@@ -35,7 +35,7 @@ import { useStream, type PlaybackController } from '@/context/StreamContext';
 import { OfflineButton } from '@/components/OfflineButton';
 import { getOfflinePlaybackUrl, isVideoDownloaded } from '@/lib/offlineStore';
 import Hls from 'hls.js';
-import type { MediaDetails, PlaybackSource } from '@/types';
+import type { MediaDetails, MediaEpisode, MediaItem, PlaybackSource } from '@/types';
 
 type YouTubePlayer = {
   playVideo: () => void;
@@ -98,9 +98,38 @@ function formatTime(seconds: number) {
     : `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
+function seriesTitle(title: string) {
+  return title.replace(/\s*•\s*S\d+\s*E\d+.*$/i, '').trim();
+}
+
+function buildEpisodeQueue(item: MediaItem, episodes: MediaEpisode[], season: number) {
+  const activeEpisode = item.selectedEpisode || episodes[0]?.number || 1;
+  const baseId = item.id.replace(/-s\d+e\d+$/i, '');
+  const title = seriesTitle(item.title);
+  return episodes.map((episode) => {
+    if (episode.number === activeEpisode) {
+      return { ...item, selectedSeason: season, selectedEpisode: episode.number, episodes };
+    }
+    return {
+      ...item,
+      id: `${baseId}-s${season}e${episode.number}`,
+      title: `${title} • S${season} E${episode.number}${episode.name ? ` — ${episode.name}` : ''}`,
+      overview: episode.overview || item.overview,
+      backdropUrl: episode.stillUrl || item.backdropUrl,
+      durationSeconds: episode.runtimeMinutes * 60,
+      selectedSeason: season,
+      selectedEpisode: episode.number,
+      episodes,
+      playback: null,
+    };
+  });
+}
+
 export function VideoPlayer() {
   const {
     currentItem,
+    playItem,
+    replaceQueue,
     resolveCurrentItem,
     queue,
     queueIndex,
@@ -150,11 +179,17 @@ export function VideoPlayer() {
   const [controlPulse, setControlPulse] = useState<'play' | 'pause' | null>(null);
   const [videoFit, setVideoFit] = useState<'contain' | 'cover'>('contain');
   const [fitFeedback, setFitFeedback] = useState<string | null>(null);
+  const [episodeSeason, setEpisodeSeason] = useState(1);
+  const [playerEpisodes, setPlayerEpisodes] = useState<MediaEpisode[]>([]);
+  const [episodesLoading, setEpisodesLoading] = useState(false);
+  const [episodeError, setEpisodeError] = useState<string | null>(null);
+  const [switchingEpisode, setSwitchingEpisode] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const youtubeContainerRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<YouTubePlayer | null>(null);
   const youtubeTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const episodesRef = useRef<HTMLElement | null>(null);
   const controlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSeekRef = useRef<number | null>(null);
   const lastTapRef = useRef<{ at: number; side: 'left' | 'right' } | null>(null);
@@ -167,6 +202,23 @@ export function VideoPlayer() {
   const suppressTapRef = useRef(false);
   const suppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentId = currentItem?.id || null;
+
+  useEffect(() => {
+    if (!currentItem || currentItem.mediaType !== 'tv') {
+      setPlayerEpisodes([]);
+      setEpisodeError(null);
+      return;
+    }
+    const season = currentItem.selectedSeason || currentItem.seasons?.[0]?.number || 1;
+    const episodes = currentItem.episodes || [];
+    setEpisodeSeason(season);
+    setPlayerEpisodes(episodes);
+    setEpisodeError(null);
+    if (episodes.length) {
+      replaceQueue(buildEpisodeQueue(currentItem, episodes, season), currentItem.id);
+    }
+  }, [currentItem, replaceQueue]);
+
   // Resolve playback details. Catalog responses intentionally contain metadata
   // only; the title endpoint supplies the current signed playback source.
   useEffect(() => {
@@ -571,6 +623,54 @@ export function VideoPlayer() {
     }
   };
 
+  const loadPlayerSeason = async (season: number) => {
+    setEpisodeSeason(season);
+    setEpisodesLoading(true);
+    setEpisodeError(null);
+    try {
+      if (!currentItem.catalogId) throw new Error('Season information is unavailable.');
+      const response = await fetch(`/api/netmirror/season?catalogId=${currentItem.catalogId}&season=${season}`);
+      const payload = await response.json() as { episodes?: MediaEpisode[]; error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not load this season.');
+      setPlayerEpisodes(payload.episodes || []);
+    } catch (error) {
+      setPlayerEpisodes([]);
+      setEpisodeError(error instanceof Error ? error.message : 'Could not load this season.');
+    } finally {
+      setEpisodesLoading(false);
+    }
+  };
+
+  const playPlayerEpisode = async (episode: MediaEpisode) => {
+    if (currentItem.selectedSeason === episodeSeason && currentItem.selectedEpisode === episode.number) {
+      seek(0);
+      return;
+    }
+    setSwitchingEpisode(episode.number);
+    setEpisodeError(null);
+    try {
+      const params = new URLSearchParams({
+        id: currentItem.providerId,
+        title: seriesTitle(currentItem.title),
+        type: 'tv',
+        year: currentItem.year,
+        season: String(episodeSeason),
+        episode: String(episode.number),
+      });
+      const response = await fetch(`/api/netmirror/title?${params.toString()}`);
+      const payload = await response.json() as MediaDetails & { error?: string };
+      if (!response.ok || !payload.playback?.url) {
+        throw new Error(payload.error || 'Could not play this episode.');
+      }
+      const episodes = payload.episodes?.length ? payload.episodes : playerEpisodes;
+      playItem(payload, buildEpisodeQueue(payload, episodes, episodeSeason));
+    } catch (error) {
+      setEpisodeError(error instanceof Error ? error.message : 'Could not play this episode.');
+    } finally {
+      setSwitchingEpisode(null);
+    }
+  };
+
   const animatedTogglePlay = () => {
     setControlPulse(isPlaying ? 'pause' : 'play');
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
@@ -705,7 +805,7 @@ export function VideoPlayer() {
             <header className="watch-header sticky top-0 z-20 flex items-center justify-between px-4 sm:px-7 py-4">
               <button onClick={minimize} className="player-icon"><ChevronDown size={21} /></button>
               <div className="text-center min-w-0 px-3"><p className="watch-accent text-[9px] uppercase tracking-[0.2em] font-black">Now watching</p><p className="watch-muted text-xs font-bold truncate max-w-[52vw]">{currentItem.title}</p></div>
-              <div className="flex gap-2"><button onClick={() => setShowQueue(!showQueue)} className={`player-icon ${showQueue ? 'active' : ''}`}><ListVideo size={19} /></button><button onClick={toggleFullscreen} className="player-icon">{isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
+              <div className="flex gap-2"><button onClick={() => currentItem.mediaType === 'tv' ? episodesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : setShowQueue(!showQueue)} className={`player-icon ${currentItem.mediaType !== 'tv' && showQueue ? 'active' : ''}`} title={currentItem.mediaType === 'tv' ? 'Seasons and episodes' : 'Playback queue'}><ListVideo size={19} /></button><button onClick={toggleFullscreen} className="player-icon">{isBrowserFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button></div>
             </header>
           )}
 
@@ -845,11 +945,74 @@ export function VideoPlayer() {
                     <button onClick={nextItem} className="player-pill">Next<SkipForward size={14} /></button>
                   </div>
                   <div className="flex items-center justify-center flex-wrap gap-2">
-                    <button onClick={toggleShuffle} className={`player-pill ${shuffle ? 'active' : ''}`}><Shuffle size={14} />Shuffle</button>
+                    {currentItem.mediaType !== 'tv' && <button onClick={toggleShuffle} className={`player-pill ${shuffle ? 'active' : ''}`}><Shuffle size={14} />Shuffle</button>}
                     <button onClick={cycleRepeatMode} className={`player-pill ${repeatMode !== 'OFF' ? 'active' : ''}`}>{repeatMode === 'ONE' ? <Repeat1 size={14} /> : <Repeat size={14} />}{repeatMode === 'ONE' ? 'Repeat one' : repeatMode === 'ALL' ? 'Repeat all' : 'Repeat'}</button>
                     <button onClick={() => setShowTimer(true)} className={`player-pill ${sleepTimerMinutes ? 'active' : ''}`}><Clock3 size={14} />{sleepTimerMinutes ? formatTime(sleepRemainingSeconds) : 'Timer'}</button>
                   </div>
                 </div>
+              )}
+
+              {isExpanded && currentItem.mediaType === 'tv' && (
+                <section ref={episodesRef} className="watch-glass mt-4 scroll-mt-24 rounded-[26px] p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">Seasons & episodes</p>
+                      <h3 className="mt-1 text-lg font-black">Season {episodeSeason}</h3>
+                    </div>
+                    <span className="watch-muted rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-bold">
+                      {playerEpisodes.length || currentItem.episodeCount || 0} episodes
+                    </span>
+                  </div>
+
+                  <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1">
+                    {(currentItem.seasons?.length
+                      ? currentItem.seasons
+                      : [{ number: episodeSeason, name: `Season ${episodeSeason}`, episodeCount: playerEpisodes.length }]
+                    ).map((season) => (
+                      <button
+                        key={season.number}
+                        onClick={() => void loadPlayerSeason(season.number)}
+                        disabled={episodesLoading}
+                        className={`watch-season-chip shrink-0 rounded-full px-4 py-2 text-[11px] font-black ${season.number === episodeSeason ? 'active' : ''}`}
+                      >
+                        S{season.number}<span className="ml-1.5 font-semibold opacity-60">{season.episodeCount || ''}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {episodesLoading ? (
+                    <div className="watch-muted flex min-h-36 items-center justify-center gap-2 text-xs font-bold"><span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />Loading episodes…</div>
+                  ) : playerEpisodes.length ? (
+                    <div className="no-scrollbar mt-3 grid max-h-[28rem] gap-2 overflow-y-auto sm:grid-cols-2">
+                      {playerEpisodes.map((episode) => {
+                        const active = currentItem.selectedSeason === episodeSeason && currentItem.selectedEpisode === episode.number;
+                        return (
+                          <button
+                            key={`${episodeSeason}-${episode.number}`}
+                            onClick={() => void playPlayerEpisode(episode)}
+                            disabled={switchingEpisode !== null}
+                            className={`watch-episode-card group flex min-w-0 items-center gap-3 rounded-2xl p-2 text-left disabled:opacity-60 ${active ? 'active' : ''}`}
+                          >
+                            <span className="watch-episode-art relative flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl text-sm font-black">
+                              {episode.stillUrl ? <Image src={episode.stillUrl} alt="" fill sizes="96px" className="object-cover transition-transform duration-300 group-hover:scale-105" /> : `E${episode.number}`}
+                              <span className="absolute bottom-1 left-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[8px] font-black text-white">S{episodeSeason} E{episode.number}</span>
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-black">{episode.name || `Episode ${episode.number}`}</span>
+                              <span className="watch-muted mt-1 block truncate text-[9px]">{episode.runtimeMinutes ? `${episode.runtimeMinutes} min` : 'Episode'}{episode.airDate ? ` • ${episode.airDate}` : ''}</span>
+                            </span>
+                            <span className="watch-episode-play flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+                              {switchingEpisode === episode.number ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Play size={14} className="fill-current ml-0.5" />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="watch-muted py-10 text-center text-xs">No episodes are available for this season.</p>
+                  )}
+                  {episodeError && <p className="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[10px] font-bold text-red-500">{episodeError}</p>}
+                </section>
               )}
             </div>
 
@@ -867,7 +1030,7 @@ export function VideoPlayer() {
                     <button onClick={share} className="player-action"><Share2 size={17} /><span>Share</span></button>
                     <button onClick={cycleThemeMode} className="player-action">{themeMode === 'DARK' ? <Sun size={17} /> : <Moon size={17} />}<span>Theme</span></button>
                   </div>
-                  {(showQueue || queue.length > 1) && (
+                  {currentItem.mediaType !== 'tv' && (showQueue || queue.length > 1) && (
                     <div className="mt-5 pt-4 border-t border-[var(--line)]">
                       <div className="flex items-center justify-between"><p className="text-xs font-black">Up next</p><span className="watch-muted text-[9px]">{queueIndex + 1} / {queue.length}</span></div>
                       <div className="mt-2 space-y-1 max-h-64 overflow-y-auto no-scrollbar">
