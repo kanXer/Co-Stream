@@ -74,6 +74,7 @@ export default function HomePage() {
   const [showBackExitHint, setShowBackExitHint] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backExitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catalogCacheRef = useRef<Record<string, CatalogPayload>>({});
   const lastRootBack = useRef(0);
   const backNavigationState = useRef({
     tab: 'home' as Tab,
@@ -85,24 +86,67 @@ export default function HomePage() {
     hasPlayer: false,
   });
 
-  const loadHome = useCallback(async () => {
+  const loadHome = useCallback(async (force?: boolean | React.MouseEvent | unknown) => {
     if (!platformReady || tab === 'search' || tab === 'offline') return;
-    setHomeLoading(true);
+    const isForce = typeof force === 'boolean' ? force : false;
+    const language = selectedLanguages[0] || 'en';
+    const view = tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : 'home';
+    const platformsKey = platforms.join(',');
+    const cacheKey = `${selectedRegion}:${language}:${view}:${platformsKey}`;
+
+    if (!isForce && catalogCacheRef.current[cacheKey]) {
+      setCatalog(catalogCacheRef.current[cacheKey]);
+      setHomeLoading(false);
+      setHomeError(null);
+      return;
+    }
+
+    if (catalogCacheRef.current[cacheKey]) {
+      setCatalog(catalogCacheRef.current[cacheKey]);
+    } else {
+      setHomeLoading(true);
+    }
     setHomeError(null);
+
     try {
-      const language = selectedLanguages[0] || 'en';
-      const view = tab === 'tv' ? 'tv' : tab === 'movie' ? 'movie' : 'home';
-      const response = await fetch(`/api/catalog?region=${encodeURIComponent(selectedRegion)}&language=${encodeURIComponent(language)}&view=${view}&platforms=${encodeURIComponent(platforms.join(','))}`);
+      const response = await fetch(`/api/catalog?region=${encodeURIComponent(selectedRegion)}&language=${encodeURIComponent(language)}&view=${view}&platforms=${encodeURIComponent(platformsKey)}`);
       if (!response.ok) throw new Error('Could not load discovery feed.');
-      setCatalog(await response.json() as CatalogPayload);
+      const data = await response.json() as CatalogPayload;
+      catalogCacheRef.current[cacheKey] = data;
+      setCatalog(data);
     } catch (error) {
-      setHomeError(error instanceof Error ? error.message : 'Could not load discovery feed.');
+      if (!catalogCacheRef.current[cacheKey]) {
+        setHomeError(error instanceof Error ? error.message : 'Could not load discovery feed.');
+      }
     } finally {
       setHomeLoading(false);
     }
   }, [platformReady, platforms, selectedRegion, selectedLanguages, tab]);
 
   useEffect(() => { void loadHome(); }, [loadHome]);
+
+  // Idle prefetch for Movies and Web Series tabs when Home is loaded
+  useEffect(() => {
+    if (!platformReady || tab !== 'home' || !catalog) return;
+    const timer = setTimeout(() => {
+      const language = selectedLanguages[0] || 'en';
+      const platformsKey = platforms.join(',');
+      (['movie', 'tv'] as const).forEach(async (prefetchView) => {
+        const key = `${selectedRegion}:${language}:${prefetchView}:${platformsKey}`;
+        if (!catalogCacheRef.current[key]) {
+          try {
+            const res = await fetch(`/api/catalog?region=${encodeURIComponent(selectedRegion)}&language=${encodeURIComponent(language)}&view=${prefetchView}&platforms=${encodeURIComponent(platformsKey)}`);
+            if (res.ok) {
+              catalogCacheRef.current[key] = await res.json() as CatalogPayload;
+            }
+          } catch {
+            // Silently ignore idle prefetch failure
+          }
+        }
+      });
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [catalog, platformReady, platforms, selectedLanguages, selectedRegion, tab]);
 
   useEffect(() => {
     let ready = false;
@@ -264,19 +308,33 @@ export default function HomePage() {
 
   const openItem = (item: MediaItem) => setSelectedItem(item);
   const playFrom = (item: MediaItem, items: MediaItem[]) => playItem(item, items);
-  const featured = catalog?.sections[0]?.items[0] || null;
+  const spotlight = catalog?.spotlight || [];
+  // Fallback: use first section item if no spotlight available
   const featuredQueue = catalog?.sections[0]?.items || [];
   const languageName = AVAILABLE_LANGUAGES.find((language) => language.code === selectedLanguages[0])?.name || 'your language';
   const [greeting, setGreeting] = useState('Good evening');
+  const [spotlightIdx, setSpotlightIdx] = useState(0);
   useEffect(() => {
     const hour = new Date().getHours();
     setGreeting(hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
   }, []);
+  // Reset spotlight index when catalog refreshes
+  useEffect(() => { setSpotlightIdx(0); }, [catalog]);
+  // Auto-rotate through spotlight items every 5 seconds
   useEffect(() => {
-    if (!featured) return;
-    const timer = window.setTimeout(() => prefetchNetMirrorPlayback(featured), 450);
+    if (spotlight.length <= 1) return;
+    const timer = setInterval(() => {
+      setSpotlightIdx((idx) => (idx + 1) % spotlight.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [spotlight.length]);
+  const heroItem = spotlight.length > 0 ? spotlight[spotlightIdx] : (catalog?.sections[0]?.items[0] || null);
+  useEffect(() => {
+    // Only prefetch playback for items that are streamable
+    if (!heroItem?.playback) return;
+    const timer = window.setTimeout(() => prefetchNetMirrorPlayback(heroItem), 450);
     return () => window.clearTimeout(timer);
-  }, [featured]);
+  }, [heroItem]);
 
   return (
     <div className={`min-h-screen min-w-0 max-w-full overflow-x-clip text-[var(--text)] ${currentItem ? 'pb-52' : 'pb-28'}`}>
@@ -295,7 +353,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <button onClick={() => setPlatformPickerOpen(true)} className="icon-button" title="Choose platforms"><SlidersHorizontal size={17} /></button>
             <button onClick={() => setTab('search')} className="icon-button"><Search size={17} /></button>
-            <button onClick={loadHome} className="icon-button hidden sm:flex"><RefreshCw size={17} className={homeLoading ? 'animate-spin text-[var(--accent)]' : ''} /></button>
+            <button onClick={() => void loadHome(true)} className="icon-button hidden sm:flex" title="Refresh feed"><RefreshCw size={17} className={homeLoading ? 'animate-spin text-[var(--accent)]' : ''} /></button>
             <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full border border-[var(--line)] bg-[var(--panel)] overflow-hidden flex items-center justify-center text-[var(--text-muted)]">
               {profile?.photoUrl ? <img src={profile.photoUrl} alt={profile.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <UserRound size={17} />}
             </button>
@@ -308,18 +366,40 @@ export default function HomePage() {
           <div className="page-enter min-w-0 pt-5 sm:pt-7 space-y-8">
             <div><p className="text-xs font-semibold text-[var(--text-muted)]">{greeting}, {profile?.name || 'viewer'}</p><h1 className="page-title mt-1">What will we watch?</h1></div>
 
-            {featured ? (
+            {heroItem ? (
               <section className="relative min-h-[390px] sm:min-h-[440px] rounded-[30px] overflow-hidden border border-[var(--line)] shadow-[0_24px_70px_rgba(0,0,0,.18)]">
-                {(featured.backdropUrl || featured.posterUrl) && <Image src={(featured.backdropUrl || featured.posterUrl)!} alt={featured.title} fill priority sizes="(max-width: 1280px) 100vw, 1280px" className="object-cover" />}
+                {(heroItem.backdropUrl || heroItem.posterUrl) && <Image key={heroItem.id} src={(heroItem.backdropUrl || heroItem.posterUrl)!} alt={heroItem.title} fill priority sizes="(max-width: 1280px) 100vw, 1280px" className="object-cover transition-opacity duration-700" />}
                 <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/55 to-black/5" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                 <div className="relative z-10 min-h-[390px] sm:min-h-[440px] flex flex-col justify-end sm:justify-center p-6 sm:p-10 max-w-2xl text-white">
-                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#7fffd2]">Trending in Hindi</p>
-                  <h2 className="text-4xl sm:text-6xl font-black tracking-[-.055em] leading-[.92] mt-3 text-balance">{featured.title}</h2>
-                  <div className="flex items-center gap-2.5 mt-4 text-xs font-bold text-white/70"><span>{featured.year}</span>{featured.rating > 0 && <><span>•</span><span className="inline-flex items-center gap-1 text-amber-300"><Star size={12} className="fill-current" />{featured.rating.toFixed(1)}</span></>}<span>•</span><span>{featured.mediaType === 'tv' ? 'Series' : 'Movie'}</span></div>
-                  <p className="mt-4 text-sm leading-6 text-white/65 line-clamp-3 max-w-xl">{featured.overview}</p>
-                  <div className="flex flex-wrap gap-2.5 mt-6"><button onClick={() => playFrom(featured, featuredQueue)} className="hero-primary"><Play size={18} className="fill-current" />Play now</button><button onClick={() => openItem(featured)} className="hero-secondary"><Film size={17} />Details</button></div>
+                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#7fffd2]">
+                    {heroItem.year >= String(new Date().getFullYear()) ? '🔥 Coming Soon' : 'Latest Indian Cinema'}
+                  </p>
+                  <h2 className="text-4xl sm:text-6xl font-black tracking-[-.055em] leading-[.92] mt-3 text-balance">{heroItem.title}</h2>
+                  <div className="flex items-center gap-2.5 mt-4 text-xs font-bold text-white/70"><span>{heroItem.year}</span>{heroItem.rating > 0 && <><span>•</span><span className="inline-flex items-center gap-1 text-amber-300"><Star size={12} className="fill-current" />{heroItem.rating.toFixed(1)}</span></>}<span>•</span><span>{heroItem.mediaType === 'tv' ? 'Series' : 'Movie'}</span></div>
+                  {heroItem.overview && <p className="mt-4 text-sm leading-6 text-white/65 line-clamp-3 max-w-xl">{heroItem.overview}</p>}
+                  <div className="flex flex-wrap gap-2.5 mt-6">
+                    {heroItem.playback ? (
+                      <button onClick={() => playFrom(heroItem, featuredQueue)} className="hero-primary"><Play size={18} className="fill-current" />Play now</button>
+                    ) : (
+                      <button onClick={() => openItem(heroItem)} className="hero-primary"><Film size={18} />More Info</button>
+                    )}
+                    <button onClick={() => openItem(heroItem)} className="hero-secondary"><Film size={17} />Details</button>
+                  </div>
                 </div>
+                {/* Spotlight dot indicators */}
+                {spotlight.length > 1 && (
+                  <div className="absolute bottom-4 right-6 z-20 flex items-center gap-1.5">
+                    {spotlight.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSpotlightIdx(idx)}
+                        aria-label={`Slide ${idx + 1}`}
+                        className={`rounded-full transition-all duration-300 ${idx === spotlightIdx ? 'w-5 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40 hover:bg-white/70'}`}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
             ) : homeLoading ? <HeroSkeleton /> : null}
 

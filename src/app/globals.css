@@ -147,9 +147,19 @@ button, a { -webkit-tap-highlight-color: transparent; }
   margin: 0;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 .media-grid-scroll::-webkit-scrollbar { display: none; }
-.media-card { width: 154px; min-width: 0; scroll-snap-align: start; transition: transform .25s ease; }
+.media-card {
+  width: 154px;
+  min-width: 0;
+  scroll-snap-align: start;
+  transition: transform .25s ease;
+  contain: layout style;
+  content-visibility: auto;
+  contain-intrinsic-size: 154px 260px;
+}
 .media-card:hover { transform: translateY(-3px); }
 .responsive-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem .85rem; }
 .responsive-media-grid .media-card { width: 100%; }
@@ -174,9 +184,29 @@ button, a { -webkit-tap-highlight-color: transparent; }
     radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 26rem),
     var(--bg);
 }
-.watch-backdrop { z-index: -1; overflow: hidden; }
-.watch-backdrop-image { opacity: .13; filter: saturate(.9) contrast(.92); }
-.dark .watch-backdrop-image { opacity: .24; filter: saturate(.85) contrast(1.05); }
+.player-stage {
+  contain: layout;
+  transform: translateZ(0);
+}
+.watch-backdrop {
+  z-index: -1;
+  overflow: hidden;
+  contain: strict;
+  transform: translateZ(0);
+  will-change: transform;
+}
+.watch-backdrop-image {
+  opacity: .18;
+  filter: blur(40px) saturate(.9) contrast(.92);
+  transform: scale(1.08) translateZ(0);
+  will-change: transform;
+}
+.dark .watch-backdrop-image {
+  opacity: .28;
+  filter: blur(40px) saturate(.85) contrast(1.05);
+  transform: scale(1.08) translateZ(0);
+  will-change: transform;
+}
 .watch-backdrop-shade {
   background: linear-gradient(
     to bottom,

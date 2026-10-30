@@ -11,5 +11,10 @@ export async function GET(request: Request) {
     .slice(0, 10);
   const requestedView = searchParams.get('view');
   const view = requestedView === 'tv' || requestedView === 'movie' ? requestedView : 'home';
-  return Response.json(await getHomeCatalog(region, language, platforms, view));
+  const data = await getHomeCatalog(region, language, platforms, view);
+  return Response.json(data, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200',
+    },
+  });
 }

@@ -21,6 +21,8 @@ import { MediaCard } from '@/components/MediaCard';
 import { OfflineButton } from '@/components/OfflineButton';
 import type { MediaDetails, MediaEpisode, MediaItem } from '@/types';
 
+const detailsCache = new Map<string, { value: MediaDetails; expires: number }>();
+
 export function DetailsSheet({
   item,
   onClose,
@@ -38,19 +40,31 @@ export function DetailsSheet({
     createCollection,
     addToCollection,
   } = useStream();
-  const [details, setDetails] = useState<MediaDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cachedDetails = detailsCache.get(item.id);
+  const initialDetails = cachedDetails && cachedDetails.expires > Date.now() ? cachedDetails.value : null;
+
+  const [details, setDetails] = useState<MediaDetails | null>(initialDetails);
+  const [loading, setLoading] = useState(!initialDetails);
   const [error, setError] = useState<string | null>(null);
   const [showLists, setShowLists] = useState(false);
   const [newList, setNewList] = useState('');
-  const [selectedSeason, setSelectedSeason] = useState(1);
-  const [episodes, setEpisodes] = useState<MediaEpisode[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState(initialDetails?.selectedSeason || initialDetails?.seasons?.[0]?.number || 1);
+  const [episodes, setEpisodes] = useState<MediaEpisode[]>(initialDetails?.episodes || []);
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
   const [playingEpisode, setPlayingEpisode] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
+    const cached = detailsCache.get(item.id);
+    if (cached && cached.expires > Date.now()) {
+      setDetails(cached.value);
+      setSelectedSeason(cached.value.selectedSeason || cached.value.seasons?.[0]?.number || 1);
+      setEpisodes(cached.value.episodes || []);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setDetails(null);
@@ -67,6 +81,7 @@ export function DetailsSheet({
       })
       .then((payload) => {
         if (!active) return;
+        detailsCache.set(item.id, { value: payload, expires: Date.now() + 5 * 60 * 1000 });
         setDetails(payload);
         setSelectedSeason(payload.selectedSeason || payload.seasons?.[0]?.number || 1);
         setEpisodes(payload.episodes || []);

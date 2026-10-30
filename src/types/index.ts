@@ -106,5 +106,6 @@ export interface WatchProgress {
 export interface CatalogPayload {
   mode: 'netmirror';
   sections: HomeSection[];
+  spotlight?: MediaItem[];
   notice?: string;
 }
