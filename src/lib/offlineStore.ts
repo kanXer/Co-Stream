@@ -21,9 +21,16 @@ export interface OfflineVideoMeta {
   mimeType: string;
 }
 
+export interface ActiveDownload {
+  item: MediaItem;
+  state: DownloadState;
+}
+
 interface OfflineVideoRecord extends OfflineVideoMeta {
-  videoBlob: Blob;
+  videoBlob?: Blob | null;
   coverBlob: Blob | null;
+  fileName?: string | null;
+  storageKind?: 'indexeddb' | 'opfs';
 }
 
 const DB_NAME = 'co-stream-offline';
@@ -33,6 +40,7 @@ const EVENT_NAME = 'co-downloads';
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 const states = new Map<string, DownloadState>();
+const activeDownloads = new Map<string, ActiveDownload>();
 const listeners = new Set<() => void>();
 const playbackUrls = new Map<string, string>();
 const coverUrls = new Map<string, string>();
@@ -52,6 +60,8 @@ function getDb() {
 
 function setState(id: string, state: DownloadState) {
   states.set(id, state);
+  const active = activeDownloads.get(id);
+  if (active) activeDownloads.set(id, { ...active, state });
   listeners.forEach((listener) => listener());
 }
 
@@ -67,6 +77,10 @@ export function subscribeDownloads(listener: () => void) {
 export function getDownloadState(id: string | null | undefined): DownloadState {
   if (!id) return { status: 'idle', progress: 0 };
   return states.get(id) || { status: 'idle', progress: 0 };
+}
+
+export function getActiveDownloads() {
+  return Array.from(activeDownloads.values());
 }
 
 async function requestPersistence() {
@@ -92,10 +106,20 @@ async function assertQuota(neededBytes: number) {
   }
 }
 
-async function fetchBlobWithProgress(
+function offlineFileName(id: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash ^= id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `co-stream-${(hash >>> 0).toString(16)}.mp4`;
+}
+
+async function downloadVideoWithProgress(
   url: string,
+  id: string,
   onProgress: (received: number, total: number) => void,
-): Promise<Blob> {
+): Promise<{ blob: Blob | null; fileName: string | null; size: number; contentType: string }> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Video download failed (${response.status}).`);
 
@@ -103,10 +127,42 @@ async function fetchBlobWithProgress(
   const contentType = response.headers.get('content-type') || 'video/mp4';
   if (total) await assertQuota(total);
 
+  const storageWithDirectory = navigator.storage as StorageManager & {
+    getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+  };
+  if (response.body && storageWithDirectory.getDirectory) {
+    const fileName = offlineFileName(id);
+    const root = await storageWithDirectory.getDirectory();
+    try {
+      const handle = await root.getFileHandle(fileName, { create: true });
+      const writable = await handle.createWritable();
+      let received = 0;
+      let lastUpdate = 0;
+      const tracked = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          received += chunk.byteLength;
+          const now = performance.now();
+          if (now - lastUpdate > 180 || (total > 0 && received >= total)) {
+            onProgress(received, total);
+            lastUpdate = now;
+          }
+          controller.enqueue(chunk);
+        },
+      });
+      await response.body.pipeThrough(tracked).pipeTo(writable);
+      const file = await handle.getFile();
+      onProgress(file.size, total || file.size);
+      return { blob: null, fileName, size: file.size, contentType };
+    } catch (error) {
+      await root.removeEntry(fileName).catch(() => undefined);
+      throw error;
+    }
+  }
+
   if (!response.body) {
     const blob = await response.blob();
     onProgress(blob.size, blob.size);
-    return blob;
+    return { blob, fileName: null, size: blob.size, contentType };
   }
 
   const reader = response.body.getReader();
@@ -121,7 +177,8 @@ async function fetchBlobWithProgress(
       onProgress(received, total);
     }
   }
-  return new Blob(chunks, { type: contentType });
+  const blob = new Blob(chunks, { type: contentType });
+  return { blob, fileName: null, size: blob.size, contentType };
 }
 
 async function fetchCover(url: string | null): Promise<Blob | null> {
@@ -148,35 +205,40 @@ export async function startVideoDownload(item: MediaItem, source?: PlaybackSourc
   }
   if (states.get(item.id)?.status === 'downloading') return;
 
-  setState(item.id, { status: 'downloading', progress: -1 });
+  activeDownloads.set(item.id, { item, state: { status: 'downloading', progress: 0 } });
+  setState(item.id, { status: 'downloading', progress: 0 });
   try {
     await requestPersistence();
     await assertQuota(20 * 1024 * 1024);
 
-    const videoBlob = await fetchBlobWithProgress(playback.downloadUrl || playback.url, (received, total) => {
+    const video = await downloadVideoWithProgress(playback.downloadUrl || playback.url, item.id, (received, total) => {
       setState(item.id, {
         status: 'downloading',
         progress: total > 0 ? received / total : -1,
       });
     });
-    if (videoBlob.size < 1024) throw new Error('The downloaded video was empty.');
-    await assertQuota(videoBlob.size);
+    if (video.size < 1024) throw new Error('The downloaded video was empty.');
+    if (video.blob) await assertQuota(video.size);
 
     const coverBlob = await fetchCover(item.posterUrl);
     const record: OfflineVideoRecord = {
       id: item.id,
       item: { ...item, playback },
       downloadedAt: Date.now(),
-      fileSize: videoBlob.size,
+      fileSize: video.size,
       coverSize: coverBlob?.size || 0,
-      mimeType: videoBlob.type || playback.mimeType || 'video/mp4',
-      videoBlob,
+      mimeType: video.contentType || playback.mimeType || 'video/mp4',
+      videoBlob: video.blob,
       coverBlob,
+      fileName: video.fileName,
+      storageKind: video.fileName ? 'opfs' : 'indexeddb',
     };
 
     const db = await getDb();
     await db.put(STORE, record);
     setState(item.id, { status: 'downloaded', progress: 1 });
+    activeDownloads.delete(item.id);
+    listeners.forEach((listener) => listener());
     announceListChange();
   } catch (error) {
     setState(item.id, {
@@ -192,7 +254,7 @@ export async function getAllDownloadedVideos(): Promise<OfflineVideoMeta[]> {
     const db = await getDb();
     const records = await db.getAll(STORE) as OfflineVideoRecord[];
     return records
-      .map(({ videoBlob: _video, coverBlob: _cover, ...meta }) => meta)
+      .map(({ videoBlob: _video, coverBlob: _cover, fileName: _file, storageKind: _storage, ...meta }) => meta)
       .sort((a, b) => b.downloadedAt - a.downloadedAt);
   } catch (_) {
     return [];
@@ -214,8 +276,18 @@ export async function getOfflinePlaybackUrl(id: string): Promise<string | null> 
   try {
     const db = await getDb();
     const record = await db.get(STORE, id) as OfflineVideoRecord | undefined;
-    if (!record?.videoBlob) return null;
-    const url = URL.createObjectURL(record.videoBlob);
+    if (!record) return null;
+    let media: Blob | File | null = record.videoBlob || null;
+    if (!media && record.fileName) {
+      const storageWithDirectory = navigator.storage as StorageManager & {
+        getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+      };
+      const root = await storageWithDirectory.getDirectory?.();
+      const handle = await root?.getFileHandle(record.fileName);
+      media = await handle?.getFile() || null;
+    }
+    if (!media) return null;
+    const url = URL.createObjectURL(media);
     playbackUrls.set(id, url);
     return url;
   } catch (_) {
@@ -240,7 +312,15 @@ export async function getOfflineCoverUrl(id: string): Promise<string | null> {
 
 export async function deleteDownloadedVideo(id: string) {
   const db = await getDb();
+  const record = await db.get(STORE, id) as OfflineVideoRecord | undefined;
   await db.delete(STORE, id);
+  if (record?.fileName) {
+    const storageWithDirectory = navigator.storage as StorageManager & {
+      getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+    };
+    const root = await storageWithDirectory.getDirectory?.();
+    await root?.removeEntry(record.fileName).catch(() => undefined);
+  }
   const playbackUrl = playbackUrls.get(id);
   if (playbackUrl) URL.revokeObjectURL(playbackUrl);
   playbackUrls.delete(id);
@@ -248,6 +328,7 @@ export async function deleteDownloadedVideo(id: string) {
   if (coverUrl) URL.revokeObjectURL(coverUrl);
   coverUrls.delete(id);
   setState(id, { status: 'idle', progress: 0 });
+  activeDownloads.delete(id);
   announceListChange();
 }
 

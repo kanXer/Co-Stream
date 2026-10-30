@@ -48,7 +48,8 @@ export async function GET(request: Request) {
       : null;
     const rawEpisodes = seasonPayload?.episodes || metadata?.initialEpisodes || [];
     const currentEpisode = rawEpisodes.find((entry) => Number(entry.episode) === episode);
-    const downloadStream = resolved.streams.find((stream) => stream.resolution === '480p')
+    const downloadStream = resolved.streams.find((stream) => stream.resolution === '360p')
+      || resolved.streams.find((stream) => stream.resolution === '480p')
       || resolved.streams.find((stream) => stream.resolution === '720p')
       || resolved.streams.at(-1);
     const playback: PlaybackSource = {

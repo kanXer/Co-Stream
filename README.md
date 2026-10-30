@@ -17,7 +17,8 @@ player, and PWA installation.
   pinch Fit/Fill, non-pausing single-tap controls, a consolidated top-right
   settings menu, volume, landscape-oriented fullscreen, and iOS fallback.
 - 1080p-first playback with automatic lower-quality recovery on prolonged
-  buffering, plus smaller offline-download sources stored on the device.
+  buffering, plus smaller offline-download sources streamed directly to device
+  storage with visible progress in the player and Offline page.
 
 ## Content sources
 

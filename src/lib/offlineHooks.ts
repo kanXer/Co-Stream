@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   DOWNLOADS_EVENT,
   getAllDownloadedVideos,
+  getActiveDownloads,
   getDownloadState,
   getOfflineCoverUrl,
   subscribeDownloads,
   type DownloadState,
   type OfflineVideoMeta,
+  type ActiveDownload,
 } from '@/lib/offlineStore';
 
 export function useOfflineStatus() {
@@ -76,4 +78,14 @@ export function useDownloadedIds() {
     };
   }, []);
   return ids;
+}
+
+export function useActiveDownloads() {
+  const [downloads, setDownloads] = useState<ActiveDownload[]>(() => getActiveDownloads());
+  useEffect(() => {
+    const refresh = () => setDownloads(getActiveDownloads());
+    refresh();
+    return subscribeDownloads(refresh);
+  }, []);
+  return downloads;
 }

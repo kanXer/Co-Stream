@@ -2,10 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Download, Film, HardDrive, Play, Search, Trash2, Tv, WifiOff } from 'lucide-react';
+import { AlertTriangle, Download, Film, HardDrive, Loader2, Play, Search, Trash2, Tv, WifiOff } from 'lucide-react';
 import { useStream } from '@/context/StreamContext';
-import { useDownloadedList, useOfflineStatus } from '@/lib/offlineHooks';
-import { deleteDownloadedVideo, getStorageInfo } from '@/lib/offlineStore';
+import { useActiveDownloads, useDownloadedList, useOfflineStatus } from '@/lib/offlineHooks';
+import { deleteDownloadedVideo, getStorageInfo, startVideoDownload } from '@/lib/offlineStore';
 
 type Filter = 'all' | 'movie' | 'tv';
 
@@ -18,6 +18,7 @@ function formatBytes(bytes: number) {
 export function OfflineLibrary() {
   const { playItem } = useStream();
   const { videos, covers, refresh } = useDownloadedList();
+  const activeDownloads = useActiveDownloads();
   const { isOnline } = useOfflineStatus();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
@@ -65,13 +66,34 @@ export function OfflineLibrary() {
         </div>
       </div>
 
-      {!filtered.length ? (
+      {activeDownloads.length > 0 && (
+        <section className="mt-6 rounded-[24px] border border-[var(--line)] bg-[var(--panel)] p-4">
+          <div className="flex items-center justify-between gap-3"><div><p className="eyebrow">Download queue</p><h2 className="mt-1 text-lg font-black">Saving offline</h2></div><span className="text-[10px] font-bold text-[var(--text-faint)]">{activeDownloads.length} active</span></div>
+          <div className="mt-4 space-y-3">
+            {activeDownloads.map(({ item, state }) => {
+              const percent = state.progress >= 0 ? Math.min(100, Math.round(state.progress * 100)) : 0;
+              return (
+                <div key={item.id} className="rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)] p-3">
+                  <div className="flex items-center gap-3">
+                    <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${state.status === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-[var(--accent-soft)] text-[var(--accent)]'}`}>{state.status === 'error' ? <AlertTriangle size={18} /> : <Loader2 size={18} className="animate-spin" />}</span>
+                    <div className="min-w-0 flex-1"><h3 className="truncate text-xs font-black">{item.title}</h3><p className={`mt-1 truncate text-[10px] ${state.status === 'error' ? 'text-red-500' : 'text-[var(--text-faint)]'}`}>{state.status === 'error' ? state.error || 'Download failed' : `${percent}% downloaded`}</p></div>
+                    {state.status === 'error' && <button onClick={() => void startVideoDownload(item, item.playback)} className="small-pill">Retry</button>}
+                  </div>
+                  {state.status !== 'error' && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--line)]"><div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300" style={{ width: `${percent}%` }} /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {!filtered.length && activeDownloads.length === 0 ? (
         <div className="mt-7 min-h-64 rounded-[28px] border-2 border-dashed border-[var(--line)] bg-[var(--panel)] flex flex-col items-center justify-center text-center p-6">
           <span className="w-16 h-16 rounded-2xl bg-[var(--accent-soft)] text-[var(--accent)] flex items-center justify-center"><Download size={28} /></span>
           <h2 className="mt-4 text-lg font-black">{videos.length ? 'No matching downloads' : 'Nothing saved yet'}</h2>
           <p className="mt-1 max-w-sm text-xs leading-5 text-[var(--text-muted)]">Open a movie or episode and tap “Save offline”. Completed downloads appear here.</p>
         </div>
-      ) : (
+      ) : filtered.length > 0 ? (
         <div className="mt-7 responsive-media-grid">
           {filtered.map((download) => {
             const item = download.item;
@@ -96,7 +118,7 @@ export function OfflineLibrary() {
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
