@@ -1,4 +1,4 @@
-const CACHE = 'co-stream-v8';
+const CACHE = 'co-stream-v9';
 const PRECACHE = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {

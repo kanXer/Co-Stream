@@ -6,17 +6,17 @@ import { getSiteUrl } from '@/lib/site';
 import './globals.css';
 
 const siteUrl = getSiteUrl();
-const title = 'Co Stream — Your cinema, together';
+const title = 'Co-Stream — Your cinema, together';
 const description = 'Discover Hindi movies and web series, browse every season and episode, and watch with quality, subtitle, audio-language, and offline controls.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
     default: title,
-    template: '%s | Co Stream',
+    template: '%s | Co-Stream',
   },
   description,
-  applicationName: 'Co Stream',
+  applicationName: 'Co-Stream',
   authors: [{ name: 'Co Stream', url: siteUrl }],
   creator: 'Co Stream',
   publisher: 'Co Stream',
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    title: 'Co Stream',
+    title: 'Co-Stream',
     statusBarStyle: 'black-translucent',
   },
   icons: {
@@ -52,6 +52,7 @@ export const metadata: Metadata = {
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
+    shortcut: [{ url: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
     apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
   },
   openGraph: {
