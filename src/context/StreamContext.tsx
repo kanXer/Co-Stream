@@ -145,6 +145,29 @@ function shuffled<T>(input: T[]) {
   return output;
 }
 
+function journeyKey(item: MediaItem) {
+  if (item.mediaType === 'tv') {
+    const seriesId = item.providerId || item.id.replace(/-s\d+e\d+$/i, '');
+    return `tv:${seriesId}`;
+  }
+  return `movie:${item.id}`;
+}
+
+function compactRecentItems(items: MediaItem[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = journeyKey(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 60);
+}
+
+function putRecentItem(items: MediaItem[], item: MediaItem) {
+  const key = journeyKey(item);
+  return [item, ...items.filter((entry) => journeyKey(entry) !== key)].slice(0, 60);
+}
+
 export function StreamProvider({ children }: { children: React.ReactNode }) {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('SYSTEM');
   const [selectedRegion, setSelectedRegionState] = useState('IN');
@@ -197,7 +220,9 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     setSelectedRegionState(localStorage.getItem('co_region') || 'IN');
     setSelectedLanguagesState(loadJson('co_languages', ['hi', 'en']));
     setWatchlist(loadJson('co_watchlist', []));
-    setRecentItems(loadJson('co_recent', []));
+    const savedRecentItems = compactRecentItems(loadJson<MediaItem[]>('co_recent', []));
+    setRecentItems(savedRecentItems);
+    saveJson('co_recent', savedRecentItems);
     setCollections(loadJson('co_collections', []));
     setWatchProgress(loadJson('co_progress', {}));
     setSearchHistory(loadJson('co_search_history', []));
@@ -266,6 +291,12 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     setCurrentItem(resolved);
     currentRef.current = resolved;
     setQueue((items) => items.map((item) => item.id === resolved.id ? resolved : item));
+    setRecentItems((items) => {
+      const key = journeyKey(resolved);
+      const next = compactRecentItems(items.map((item) => journeyKey(item) === key ? resolved : item));
+      saveJson('co_recent', next);
+      return next;
+    });
   }, []);
 
   const playItem = useCallback((item: MediaItem, newQueue?: MediaItem[], shuffleFirst?: boolean) => {
@@ -286,7 +317,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     setIsExpanded(true);
     setRecentItems((items) => {
-      const next = [item, ...items.filter((entry) => entry.id !== item.id)].slice(0, 60);
+      const next = putRecentItem(items, item);
       saveJson('co_recent', next);
       return next;
     });
@@ -322,7 +353,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     setPlaybackError(null);
     setIsLoading(true);
     setRecentItems((recent) => {
-      const next = [item, ...recent.filter((entry) => entry.id !== item.id)].slice(0, 60);
+      const next = putRecentItem(recent, item);
       saveJson('co_recent', next);
       return next;
     });
