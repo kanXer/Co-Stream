@@ -962,7 +962,6 @@ export function VideoPlayer() {
 
       {!isExpanded && (
         <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-40 bottom-[calc(4.55rem+env(safe-area-inset-bottom,0px))] rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.3)] overflow-hidden">
-          <div className="h-0.5 bg-[var(--line)]"><div className="h-full bg-[var(--accent)]" style={{ width: `${progress}%` }} /></div>
           <div className="flex items-center gap-3 p-2.5">
             <button onClick={() => setIsExpanded(true)} className="relative w-16 h-11 rounded-xl overflow-hidden bg-[var(--panel)] shrink-0">
               {background ? <Image src={background} alt="" fill sizes="64px" className="object-cover" /> : <Play size={18} />}
@@ -980,6 +979,15 @@ export function VideoPlayer() {
             </button>
             <button onClick={nextItem} className="icon-button"><SkipForward size={18} className="fill-current" /></button>
             <button onClick={() => setIsExpanded(true)} className="icon-button hidden sm:flex"><Expand size={17} /></button>
+          </div>
+          <div className="px-2.5 pb-2.5 pt-0.5">
+            <div className="h-1.5 rounded-full overflow-hidden bg-[var(--line)] relative cursor-pointer" onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+              seek((duration || 1) * percent);
+            }}>
+              <div className="h-full bg-[var(--accent)] absolute inset-y-0 left-0 rounded-full" style={{ width: `${progress}%` }} />
+            </div>
           </div>
         </div>
       )}
