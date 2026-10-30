@@ -16,9 +16,10 @@ player, and PWA installation.
   audio-language switching, animated controls, left/right double-tap ±10 seconds,
   pinch Fit/Fill, non-pausing single-tap controls, a consolidated top-right
   settings menu, volume, landscape-oriented fullscreen, and iOS fallback.
-- 1080p-first playback with automatic lower-quality recovery on prolonged
-  buffering, plus smaller offline-download sources streamed directly to device
-  storage with visible progress in the player and Offline page.
+- Smooth 720p-first playback with optional 1080p and automatic lower-quality
+  recovery on prolonged buffering, plus smaller offline-download sources
+  streamed directly to device storage with visible progress in the player and
+  Offline page.
 
 ## Content sources
 

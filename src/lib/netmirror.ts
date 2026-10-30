@@ -577,10 +577,11 @@ export async function resolveCurrentNetMirrorStream(options: {
     throw new Error(embed.error || 'No playable NetMirror stream is available for this title.');
   }
 
-  // Start at the best 1080p-or-lower stream. The player can automatically
-  // fall back when a device or connection cannot sustain it.
+  // Start at 720p or lower. Relaying 1080p through a serverless function can
+  // leave too little bandwidth headroom for uninterrupted playback; viewers
+  // can still select 1080p manually from the quality menu.
   const ordered = [...candidates].sort((left, right) => right.resolution - left.resolution);
-  const selected = ordered.find((stream) => stream.resolution > 0 && stream.resolution <= 1080) || ordered[0];
+  const selected = ordered.find((stream) => stream.resolution > 0 && stream.resolution <= 720) || ordered[0];
   const metadata = 'metadata' in resolved ? resolved.metadata : null;
   const captions = (embed.captions || []).flatMap((caption, index) => {
     if (!caption.url) return [];

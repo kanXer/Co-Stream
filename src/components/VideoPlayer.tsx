@@ -408,7 +408,7 @@ export function VideoPlayer() {
       if (stallTimer) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
         if (video.readyState < 3) fallBackQuality();
-      }, 6500);
+      }, 4500);
     };
     const onCanPlay = () => {
       if (stallTimer) clearTimeout(stallTimer);
