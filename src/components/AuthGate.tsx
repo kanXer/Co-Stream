@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Clapperboard, Play, UserRound } from 'lucide-react';
+import Image from 'next/image';
+import { UserRound } from 'lucide-react';
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -132,12 +133,9 @@ function WelcomeScreen() {
             Your cinema, your queue
           </div>
           <div className="flex items-center justify-center lg:justify-start gap-4 mt-7">
-            <div className="relative w-20 h-20 rounded-[24px] bg-gradient-to-br from-[#7fffd2] via-[#28d9c2] to-[#7165ff] flex items-center justify-center shadow-[0_24px_70px_rgba(40,217,194,.28)]">
-              <Clapperboard size={38} className="text-[#04110e]" />
-              <span className="absolute -right-2 -bottom-2 w-9 h-9 rounded-full bg-white text-[#09110f] flex items-center justify-center border-4 border-[#05080d]"><Play size={15} className="fill-current ml-0.5" /></span>
-            </div>
+            <div className="relative w-20 h-20 rounded-[24px] overflow-hidden shadow-[0_24px_70px_rgba(112,136,255,.28)]"><Image src="/icon-192.png" alt="Co-Stream" fill sizes="80px" className="object-cover" priority /></div>
             <div>
-              <h1 className="text-4xl sm:text-5xl font-black tracking-[-0.05em]">Co Stream</h1>
+              <h1 className="text-4xl sm:text-5xl font-black tracking-[-0.05em]">Co-Stream</h1>
               <p className="text-sm font-semibold text-white/45 mt-1">Watch together. Keep every story close.</p>
             </div>
           </div>

@@ -37,7 +37,7 @@ export default function PwaRegister() {
   if (!prompt || dismissed) return null;
   return (
     <div className="fixed right-3 bottom-24 z-50 flex items-center gap-2 rounded-full border border-[var(--accent)]/35 bg-[var(--panel-elevated)]/95 backdrop-blur-xl shadow-xl pl-4 pr-2 py-2">
-      <button onClick={async () => { await prompt.prompt(); await prompt.userChoice; setPrompt(null); }} className="flex items-center gap-2 text-xs font-black"><Download size={15} className="text-[var(--accent)]" />Install Co Stream</button>
+      <button onClick={async () => { await prompt.prompt(); await prompt.userChoice; setPrompt(null); }} className="flex items-center gap-2 text-xs font-black"><Download size={15} className="text-[var(--accent)]" />Install Co-Stream</button>
       <button onClick={() => { setDismissed(true); sessionStorage.setItem('co_install_dismissed', '1'); }} className="icon-button !w-7 !h-7"><X size={13} /></button>
     </div>
   );

@@ -89,7 +89,7 @@ export function SettingsModal({ open, onClose, profile }: SettingsModalProps) {
         <div className="flex items-center justify-between">
           <div>
             <p className="eyebrow">Account & preferences</p>
-            <h2 className="text-xl font-black tracking-tight">Your Co Stream</h2>
+            <h2 className="text-xl font-black tracking-tight">Your Co-Stream</h2>
           </div>
           <button onClick={onClose} className="icon-button"><X size={18} /></button>
         </div>

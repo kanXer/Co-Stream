@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
-  Clapperboard,
   Compass,
   Download,
   Film,
@@ -178,8 +177,8 @@ export default function HomePage() {
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--bg)]/78 backdrop-blur-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <button onClick={() => setTab('home')} className="flex items-center gap-2.5">
-            <span className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-[var(--accent)] via-[#33d8c1] to-[#7165ff] text-[#03100d] flex items-center justify-center shadow-lg"><Clapperboard size={21} /><Play size={9} className="absolute bottom-1.5 right-1.5 fill-current" /></span>
-            <span className="text-left"><span className="block text-lg font-black tracking-[-0.04em] leading-none">Co Stream</span><span className="block text-[8px] font-black uppercase tracking-[.15em] text-[var(--accent)] mt-1">Cinema, together</span></span>
+            <span className="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg"><Image src="/icon-192.png" alt="" fill sizes="40px" className="object-cover" priority /></span>
+            <span className="text-left"><span className="block text-lg font-black tracking-[-0.04em] leading-none">Co-Stream</span><span className="block text-[8px] font-black uppercase tracking-[.15em] text-[var(--accent)] mt-1">Cinema, together</span></span>
           </button>
           <nav className="hidden md:flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--panel)] p-1">
             <TopNav active={tab === 'home'} onClick={() => setTab('home')} icon={<House size={15} />} label="Home" />
@@ -236,7 +235,7 @@ export default function HomePage() {
               <MediaSection key={section.id} title={section.title} subtitle={section.subtitle} items={section.items} ranked={section.id.startsWith('top10-')} onOpen={openItem} onPlay={(item) => playFrom(item, section.items)} />
             ))}
 
-            <footer className="py-7 border-t border-[var(--line)] text-center text-[10px] leading-relaxed text-[var(--text-faint)]">Co Stream · Movies and series in one place</footer>
+            <footer className="py-7 border-t border-[var(--line)] text-center text-[10px] leading-relaxed text-[var(--text-faint)]">Co-Stream · Movies and series in one place</footer>
           </div>
         )}
 
