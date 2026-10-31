@@ -644,18 +644,6 @@ export async function resolveCurrentNetMirrorStream(options: {
           for (const s of playlist.sources) {
             if (s.file) {
               const fullUrl = s.file.startsWith('http') ? s.file : new URL(s.file, baseOrigin).toString();
-              // 220884 is NetMirror's dummy 9-minute placeholder video ("Too many requests" notice)
-              // used when unreleased titles have no real stream yet. Skip it.
-              if (fullUrl.includes('220884')) continue;
-              const isDummyPlaceholder = await (async () => {
-                try {
-                  const checkRes = await fetch(fullUrl, { headers: { 'User-Agent': 'okhttp/4.9.2 /OS.Gatu v3.0', 'Referer': 'https://net52.cc/' } });
-                  const checkText = await checkRes.text();
-                  return checkText.includes('220884') || checkText.includes('/files/220884/');
-                } catch { return false; }
-              })();
-              if (isDummyPlaceholder) continue;
-
               const resNum = Number.parseInt(s.label || '', 10)
                 || (/full\s*hd/i.test(s.label || '') ? 1080 : /mid\s*hd/i.test(s.label || '') ? 720 : /low\s*hd/i.test(s.label || '') ? 480 : 0);
               candidates.push({ url: fullUrl, resolution: resNum });
@@ -840,7 +828,7 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
   const headers = new Headers();
   const range = request.headers.get('range');
   if (range) headers.set('range', range);
-  headers.set('User-Agent', 'okhttp/4.9.2 /OS.Gatu v3.0');
+  headers.set('User-Agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Mobile Safari/537.36');
   headers.set('Referer', referer);
   headers.set('Accept', '*/*');
 
