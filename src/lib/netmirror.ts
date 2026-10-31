@@ -800,7 +800,7 @@ function parseAttributeList(line: string) {
 
 export function proxiedMediaPath(target: string) {
   const isManifest = target.includes('.m3u8');
-  const isSegment = /\.(ts|js|woff2|jpg|jpeg)$/i.test(target);
+  const isSegment = /\.(ts|js|woff2)$/i.test(target) || (target.includes('/files/') && /\.(jpg|jpeg)$/i.test(target));
   const extSuffix = isSegment ? '&file=segment.ts' : isManifest ? '&file=playlist.m3u8' : '';
   return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
 }
