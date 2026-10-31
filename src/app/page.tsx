@@ -193,17 +193,15 @@ export default function HomePage() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   };
 
-  useEffect(() => {
-    backNavigationState.current = {
-      tab,
-      selectedItem: Boolean(selectedItem),
-      settingsOpen,
-      platformPickerOpen,
-      platformReady,
-      isExpanded,
-      hasPlayer: Boolean(currentItem),
-    };
-  }, [tab, selectedItem, settingsOpen, platformPickerOpen, platformReady, isExpanded, currentItem]);
+  backNavigationState.current = {
+    tab,
+    selectedItem: Boolean(selectedItem),
+    settingsOpen,
+    platformPickerOpen,
+    platformReady,
+    isExpanded,
+    hasPlayer: Boolean(currentItem),
+  };
 
   useEffect(() => {
     const guardKey = '__coStreamBackGuard';
@@ -229,8 +227,11 @@ export default function HomePage() {
         consumeBack(() => { void document.exitFullscreen().catch(() => undefined); });
         return;
       }
-      if (state.isExpanded) {
-        consumeBack(() => setIsExpanded(false));
+      if (state.isExpanded || state.hasPlayer) {
+        consumeBack(() => {
+          setIsExpanded(false);
+          closePlayer();
+        });
         return;
       }
       if (state.selectedItem) {
@@ -249,13 +250,9 @@ export default function HomePage() {
         consumeBack(() => setTab('home'));
         return;
       }
-      if (state.hasPlayer) {
-        consumeBack(closePlayer);
-        return;
-      }
 
       const now = Date.now();
-      if (now - lastRootBack.current <= 1800) {
+      if (lastRootBack.current > 0 && now - lastRootBack.current <= 2000) {
         clearExitHint();
         window.removeEventListener('popstate', onPopState);
         window.history.back();
@@ -267,7 +264,7 @@ export default function HomePage() {
       backExitTimer.current = setTimeout(() => {
         setShowBackExitHint(false);
         lastRootBack.current = 0;
-      }, 1800);
+      }, 2000);
       armBackGuard();
     };
 
@@ -276,7 +273,7 @@ export default function HomePage() {
       window.removeEventListener('popstate', onPopState);
       if (backExitTimer.current) clearTimeout(backExitTimer.current);
     };
-  }, [closePlayer, setIsExpanded]);
+  }, [closePlayer, setIsExpanded, platformReady]);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);

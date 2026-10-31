@@ -157,6 +157,7 @@ const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export function VideoPlayer() {
   const {
     currentItem,
+    closePlayer,
     playItem,
     replaceQueue,
     resolveCurrentItem,
@@ -1220,6 +1221,7 @@ export function VideoPlayer() {
   const minimize = () => {
     if (source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
     setIsExpanded(false);
+    closePlayer();
   };
 
   const contextSubtitle = [

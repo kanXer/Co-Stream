@@ -128,6 +128,8 @@ export type NetMirrorTitleMetadata = {
   year?: string;
   originalLanguage?: string;
   rating?: number;
+  runtime?: number;
+  trailerKey?: string;
   genres?: Array<{ id?: number; name?: string }>;
   seasons?: Array<{ season_number?: number; episode_count?: number; name?: string }>;
   initialSeason?: number;

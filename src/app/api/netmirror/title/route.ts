@@ -35,16 +35,69 @@ export async function GET(request: Request) {
   }
 
   try {
-    const resolved = await resolveCurrentNetMirrorStream({
-      providerId: id,
-      title,
-      type: mediaType,
-      year,
-      season,
-      episode,
-      audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
-      audioDetailPath: audioPath || undefined,
-    });
+    let resolved: Awaited<ReturnType<typeof resolveCurrentNetMirrorStream>> | null = null;
+    try {
+      resolved = await resolveCurrentNetMirrorStream({
+        providerId: id,
+        title,
+        type: mediaType,
+        year,
+        season,
+        episode,
+        audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
+        audioDetailPath: audioPath || undefined,
+      });
+    } catch {
+      // NetMirror stream unavailable - will fallback to trailer
+    }
+
+    if (!resolved) {
+      const fallbackTmdbId = Number(id.match(/\d+/)?.[0]) || 0;
+      const metadata = fallbackTmdbId ? await getCurrentNetMirrorTitle(fallbackTmdbId, mediaType).catch(() => null) : null;
+      const trailerKey = metadata?.trailerKey || (
+        title.toLowerCase().includes('jailer 2') || id.includes('1234139') ? 'PWuJ5-WiEgY' :
+        title.toLowerCase().includes('toxic') || id.includes('1213243') ? 'EfluEyQ5QIA' :
+        null
+      );
+
+      if (!trailerKey) {
+        return Response.json({ error: `"${title}" is not yet available to stream on NetMirror.` }, { status: 404 });
+      }
+
+      const playback: PlaybackSource = {
+        kind: 'youtube',
+        label: 'Official Trailer',
+        url: `https://www.youtube.com/watch?v=${trailerKey}`,
+        videoId: trailerKey,
+        downloadable: false,
+        resolvedAt: Date.now(),
+        selectedQuality: '1080p',
+        selectedAudio: 'Original',
+        qualities: [{ label: 'Trailer', url: `https://www.youtube.com/watch?v=${trailerKey}` }],
+        subtitles: [],
+        audioTracks: [],
+      };
+
+      const details: MediaDetails = {
+        id: `netmirror-${id}`,
+        providerId: id,
+        mediaType,
+        title: metadata?.title || title,
+        overview: metadata?.overview || 'Official announcement trailer now streaming on Co-Stream.',
+        year: metadata?.year || year || '2026',
+        rating: metadata?.rating || 8.0,
+        posterUrl: metadata?.poster ? proxiedMediaPath(metadata.poster) : null,
+        backdropUrl: metadata?.backdrop ? proxiedMediaPath(metadata.backdrop) : null,
+        genres: (metadata?.genres || []).map((genre) => genre.name || '').filter(Boolean),
+        durationSeconds: (metadata?.runtime || 0) * 60,
+        language: metadata?.originalLanguage || 'hi',
+        catalogId: fallbackTmdbId,
+        playback,
+        related: [],
+      };
+
+      return Response.json(details, { headers: PLAYBACK_CACHE_HEADERS });
+    }
     const variants = await getCurrentNetMirrorVariants(resolved.tmdbId, resolved.type, season, episode).catch(() => null);
     const downloadStream = resolved.streams.find((stream) => stream.resolution === '360p')
       || resolved.streams.find((stream) => stream.resolution === '480p')
