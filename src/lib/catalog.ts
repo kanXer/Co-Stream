@@ -940,7 +940,7 @@ export async function getMediaDetails(type: MediaType, id: string): Promise<Medi
         resolvedAt: Date.now(),
         selectedAudio: resolved.audioLanguage?.replace(/\s+dub$/i, '') || 'Original',
       },
-      related: [],
+      related: await getRelatedMedia(type, id),
     };
   } catch (error) {
     console.error('NetMirror details failed:', error);
@@ -948,6 +948,21 @@ export async function getMediaDetails(type: MediaType, id: string): Promise<Medi
   }
 }
 
-export async function getRelatedMedia(_type: MediaType, _id: string): Promise<MediaItem[]> {
-  return [];
+export async function getRelatedMedia(type: MediaType, id: string): Promise<MediaItem[]> {
+  const currentTmdb = Number(id.match(/\d+/)?.[0]) || 0;
+  const sourceList = type === 'tv'
+    ? CURATED_HINDI_SERIES_LIST
+    : [...CURATED_HINDI_LATEST, ...CURATED_HINDI_POPULAR, ...CURATED_HINDI_ACTION, ...CURATED_HINDI_THRILLER, ...CURATED_HINDI_COMEDY];
+
+  const seen = new Set<number>();
+  if (currentTmdb) seen.add(currentTmdb);
+
+  const related: MediaItem[] = [];
+  for (const def of sourceList) {
+    if (seen.has(def.tmdbId)) continue;
+    seen.add(def.tmdbId);
+    related.push(mapCurrentItem(hindiDefToCatalogItem(def, type)));
+    if (related.length >= 10) break;
+  }
+  return related;
 }

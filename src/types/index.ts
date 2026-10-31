@@ -77,6 +77,7 @@ export interface MediaItem {
   episodes?: MediaEpisode[];
   cast?: string[];
   playback?: PlaybackSource | null;
+  related?: MediaItem[];
 }
 
 export interface HomeSection {

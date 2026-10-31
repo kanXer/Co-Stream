@@ -214,6 +214,7 @@ export function VideoPlayer() {
   const [fitFeedback, setFitFeedback] = useState<string | null>(null);
   const [episodeSeason, setEpisodeSeason] = useState(1);
   const [playerEpisodes, setPlayerEpisodes] = useState<MediaEpisode[]>([]);
+  const [relatedItems, setRelatedItems] = useState<MediaItem[]>([]);
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [episodeError, setEpisodeError] = useState<string | null>(null);
   const [switchingEpisode, setSwitchingEpisode] = useState<number | null>(null);
@@ -307,6 +308,29 @@ export function VideoPlayer() {
       replaceQueue(buildEpisodeQueue(currentItem, episodes, season), currentItem.id);
     }
   }, [currentItem, replaceQueue]);
+
+  useEffect(() => {
+    if (!currentItem) {
+      setRelatedItems([]);
+      return;
+    }
+    if (currentItem.related && currentItem.related.length > 0) {
+      setRelatedItems(currentItem.related);
+      return;
+    }
+    let active = true;
+    fetch(`/api/related?id=${encodeURIComponent(currentItem.id)}&type=${currentItem.mediaType}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && Array.isArray(data.results)) {
+          setRelatedItems(data.results);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [currentItem?.id, currentItem?.mediaType, currentItem?.related]);
 
   useEffect(() => {
     if (!currentItem) {
@@ -2160,6 +2184,52 @@ export function VideoPlayer() {
                       {themeMode === 'DARK' ? <Sun size={20} /> : <Moon size={20} />}
                     </button>
                   </div>
+
+                  {/* ── Related Movies / Recommendations ─────────────────── */}
+                  {relatedItems.length > 0 && (
+                    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-xs font-black tracking-wide text-white">
+                          {currentItem.mediaType === 'tv' ? 'Related Series' : 'Related Movies'}
+                        </p>
+                        <span className="watch-muted text-[10px] font-bold">Recommended</span>
+                      </div>
+                      <div className="space-y-2 max-h-[340px] overflow-y-auto no-scrollbar pr-0.5">
+                        {relatedItems.map((movie) => (
+                          <div
+                            key={movie.id}
+                            onClick={() => playItem(movie, [movie, ...relatedItems])}
+                            className="group flex items-center gap-3 p-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                          >
+                            <div className="watch-poster relative w-12 h-16 rounded-xl overflow-hidden shrink-0 bg-white/5 shadow-md">
+                              {movie.posterUrl ? (
+                                <Image
+                                  src={movie.posterUrl}
+                                  alt={movie.title}
+                                  fill
+                                  sizes="48px"
+                                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-[10px] text-white/40">🎬</div>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-xs font-bold text-white group-hover:text-[#7fffd2] transition truncate">
+                                {movie.title}
+                              </h4>
+                              <p className="watch-muted text-[10px] mt-0.5 font-medium truncate">
+                                {movie.year} {movie.rating ? `• ★ ${movie.rating.toFixed(1)}` : ''}
+                              </p>
+                            </div>
+                            <span className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-[#7fffd2] group-hover:text-black flex items-center justify-center text-white transition-all duration-200 shrink-0">
+                              <Play size={13} className="fill-current ml-0.5" />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {currentItem.mediaType !== 'tv' && (showQueue || queue.length > 1) && (
                     <div className="mt-5 pt-4 border-t border-[var(--line)]">
                       <div className="flex items-center justify-between"><p className="text-xs font-black">Up next</p><span className="watch-muted text-[9px]">{queueIndex + 1} / {queue.length}</span></div>
