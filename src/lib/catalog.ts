@@ -197,7 +197,7 @@ type HindiTitleDef = {
 
 const HINDI_SPOTLIGHT_FALLBACK: HindiTitleDef[] = [
   { tmdbId: 1234139, title: 'Jailer 2',              year: '2026', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 8.0, overview: 'The sequel to the blockbuster action thriller Jailer, starring Rajinikanth.' },
-  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/6xK461P6yV8Xq50tK1B7z5wVf9V.jpg', rating: 8.0, overview: 'A fairy tale for grown-ups starring Yash, directed by Geetu Mohandas.' },
+  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/5RTd3YCLWbEhbe9OXRuNX3pbT5U.jpg', rating: 8.0, overview: 'A fairy tale for grown-ups starring Yash, directed by Geetu Mohandas.' },
   { tmdbId: 1196943, title: 'Chhaava',                year: '2025', poster: 'https://image.tmdb.org/t/p/w185/ubRsrzb6NRW8YhVTJ6jG1kpNvCi.jpg', rating: 7.2, overview: 'Shivaji’s death sparks the Maratha-Mughal conflict as his son Sambhaji leads the resistance.' },
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5, overview: 'An ex-cop living under an alias steps back into violence to protect his young daughter.' },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5, overview: 'Salman Khan stars in this high-voltage action drama directed by AR Murugadoss.' },
@@ -217,7 +217,7 @@ const HINDI_SPOTLIGHT_FALLBACK: HindiTitleDef[] = [
   { tmdbId: 579974,  title: 'RRR',                    year: '2022', poster: 'https://image.tmdb.org/t/p/w185/wE0I6efAW4cDDmZQWtwZMOW44EJ.jpg', rating: 7.9, overview: 'A legendary tale of two revolutionaries fighting against British colonial rule in the 1920s.' },
   { tmdbId: 587412,  title: 'K.G.F: Chapter 2',       year: '2022', poster: 'https://image.tmdb.org/t/p/w185/khNVygolU0TxLIDWff5tQlAhZ23.jpg', rating: 7.7, overview: 'Rocky asserts his supremacy over KGF while dealing with adversaries and government forces.' },
   { tmdbId: 496331,  title: 'Brahmāstra Part One',    year: '2022', poster: 'https://image.tmdb.org/t/p/w185/x61qdvHIsr9U53FwoLVDQqAGur0.jpg', rating: 6.5, overview: 'Shiva discovers his extraordinary destiny and power over fire connected to the divine weapon.' },
-  { tmdbId: 1109086, title: 'War 2',                  year: '2025', poster: 'https://image.tmdb.org/t/p/w780/6xK461P6yV8Xq50tK1B7z5wVf9V.jpg', rating: 7.5, overview: 'Hrithik Roshan and Jr NTR clash in the sixth instalment of the YRF Spy Universe.' },
+  { tmdbId: 1109086, title: 'War 2',                  year: '2025', poster: 'https://image.tmdb.org/t/p/w780/pKIRUTnwY3YYU9urSdsuobdcliP.jpg', rating: 7.5, overview: 'Hrithik Roshan and Jr NTR clash in the sixth instalment of the YRF Spy Universe.' },
 ];
 
 function hindiDefToCatalogItem(def: HindiTitleDef, type: 'movie' | 'tv' = 'movie'): NetMirrorCatalogItem {
@@ -238,7 +238,7 @@ const CURATED_HINDI_LATEST: HindiTitleDef[] = [
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5 },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5 },
   { tmdbId: 1234139, title: 'Jailer 2',              year: '2026', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 8.0 },
-  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/6xK461P6yV8Xq50tK1B7z5wVf9V.jpg', rating: 8.0 },
+  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/5RTd3YCLWbEhbe9OXRuNX3pbT5U.jpg', rating: 8.0 },
   { tmdbId: 857598,  title: 'Pushpa 2 - The Rule',    year: '2024', poster: 'https://image.tmdb.org/t/p/w185/1T21FblunT0y8fz7YaW8JMYgUKm.jpg', rating: 6.8 },
   { tmdbId: 1112426, title: 'Stree 2',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/nfnhwfUEFuSOxxf4jDdBlY6Lccw.jpg', rating: 7.3 },
   { tmdbId: 801688,  title: 'Kalki 2898-AD',          year: '2024', poster: 'https://image.tmdb.org/t/p/w185/rstcAnBeCkxNQjNp3YXrF6IP1tW.jpg', rating: 7.1 },
@@ -248,12 +248,12 @@ const CURATED_HINDI_LATEST: HindiTitleDef[] = [
   { tmdbId: 1233531, title: 'Article 370',            year: '2024', poster: 'https://image.tmdb.org/t/p/w185/9VTemjHMpyxzfC3JsG2aFy8Bf9Y.jpg', rating: 7.2 },
   { tmdbId: 1187058, title: 'Munjya',                 year: '2024', poster: 'https://image.tmdb.org/t/p/w185/ylYdXu0SM79Qs7vOz6q7mBxanVD.jpg', rating: 6.5 },
   { tmdbId: 1187619, title: 'Shaitaan',               year: '2024', poster: 'https://image.tmdb.org/t/p/w185/oRvFzcagAcC6Q317xtV7QXzwBnj.jpg', rating: 6.7 },
-  { tmdbId: 850165,  title: 'Fighter',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/zDZowwb5qU8Q3Q9yJ2k5N4rB4l7.jpg', rating: 6.8 },
-  { tmdbId: 1146225, title: 'Chandu Champion',        year: '2024', poster: 'https://image.tmdb.org/t/p/w185/d5bZ4uMkW3X3y0uQfU9Z8u1p7V9.jpg', rating: 7.3 },
-  { tmdbId: 902897,  title: 'Yodha',                  year: '2024', poster: 'https://image.tmdb.org/t/p/w185/eQxU0jU7o8w7fC9B5b8X8m1P3l5.jpg', rating: 6.1 },
-  { tmdbId: 618355,  title: 'Maidaan',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5vR5cW9q9V6d9l7M1k4B7a8N3b5.jpg', rating: 7.4 },
-  { tmdbId: 896350,  title: 'Merry Christmas',         year: '2024', poster: 'https://image.tmdb.org/t/p/w185/d2e1B4r8l8k3N5b7C9a1M4w7P2y.jpg', rating: 7.0 },
-  { tmdbId: 1072790, title: 'Teri Baaton Mein Aisa Uljha Jiya', year: '2024', poster: 'https://image.tmdb.org/t/p/w185/2gL8d3k5l8w4m1p7n2b9c5v8x4y.jpg', rating: 6.2 },
+  { tmdbId: 850165,  title: 'Fighter',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/7MvqaSsnthX9xTDkDr3eZiftzp.jpg', rating: 6.8 },
+  { tmdbId: 1146225, title: 'Chandu Champion',        year: '2024', poster: 'https://image.tmdb.org/t/p/w185/b21xN1TVcFeuEKdSGxEjGKfOYhE.jpg', rating: 7.3 },
+  { tmdbId: 902897,  title: 'Yodha',                  year: '2024', poster: 'https://image.tmdb.org/t/p/w185/pnoOhdjceFu62dns1B1pfbdZOEy.jpg', rating: 6.1 },
+  { tmdbId: 618355,  title: 'Maidaan',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/eKbAVKQf6choCfasNWuYoSTOPBP.jpg', rating: 7.4 },
+  { tmdbId: 896350,  title: 'Merry Christmas',         year: '2024', poster: 'https://image.tmdb.org/t/p/w185/xzzny20uTtIit2VnxSdAFKcOFmU.jpg', rating: 7.0 },
+  { tmdbId: 1072790, title: 'Teri Baaton Mein Aisa Uljha Jiya', year: '2024', poster: 'https://image.tmdb.org/t/p/w185/yiOoPDxP0r5bb3YGBtHI5rBp1xS.jpg', rating: 6.2 },
 ];
 
 const CURATED_HINDI_POPULAR: HindiTitleDef[] = [
@@ -270,13 +270,13 @@ const CURATED_HINDI_POPULAR: HindiTitleDef[] = [
   { tmdbId: 496331,  title: 'Brahmāstra Part One: Shiva', year: '2022', poster: 'https://image.tmdb.org/t/p/w185/x61qdvHIsr9U53FwoLVDQqAGur0.jpg', rating: 6.5 },
   { tmdbId: 858485,  title: 'Kantara',                year: '2022', poster: 'https://image.tmdb.org/t/p/w185/jIsKmkxMzdCZ0Ux1GVSnu8m6Na6.jpg', rating: 7.4 },
   { tmdbId: 599925,  title: 'Shershaah',              year: '2021', poster: 'https://image.tmdb.org/t/p/w185/zGvFnwoXJKrYnKhoVPytqkqCJ8V.jpg', rating: 7.8 },
-  { tmdbId: 632747,  title: 'Sooryavanshi',           year: '2021', poster: 'https://image.tmdb.org/t/p/w185/632747.jpg', rating: 6.5 },
-  { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/580489.jpg', rating: 6.3 },
+  { tmdbId: 632747,  title: 'Sooryavanshi',           year: '2021', poster: 'https://image.tmdb.org/t/p/w185/zgEc1Tn4iKvttPUzkMOUB4BNoXK.jpg', rating: 6.5 },
+  { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/fw0oMHiMt9qOuKEJEmzFiCNAnXc.jpg', rating: 6.3 },
   { tmdbId: 848116,  title: 'Rocky Aur Rani Kii Prem Kahaani', year: '2023', poster: 'https://image.tmdb.org/t/p/w185/vTQIqlxUkOuyf2UKhlM2OUaFGKz.jpg', rating: 6.7 },
   { tmdbId: 799177,  title: 'Bhediya',                year: '2022', poster: 'https://image.tmdb.org/t/p/w185/iZtq44ZmxBW0E3tAeLG6UdJe9aj.jpg', rating: 6.8 },
-  { tmdbId: 360814,  title: 'Dangal',                 year: '2016', poster: 'https://image.tmdb.org/t/p/w185/360814.jpg', rating: 8.1 },
-  { tmdbId: 346648,  title: 'Bajrangi Bhaijaan',       year: '2015', poster: 'https://image.tmdb.org/t/p/w185/346648.jpg', rating: 7.9 },
-  { tmdbId: 585268,  title: 'War',                    year: '2019', poster: 'https://image.tmdb.org/t/p/w185/585268.jpg', rating: 6.9 },
+  { tmdbId: 360814,  title: 'Dangal',                 year: '2016', poster: 'https://image.tmdb.org/t/p/w185/cJRPOLEexI7qp2DKtFfCh7YaaUG.jpg', rating: 8.1 },
+  { tmdbId: 346648,  title: 'Bajrangi Bhaijaan',       year: '2015', poster: 'https://image.tmdb.org/t/p/w185/vhlliI7HZZlWfo5d6CiyfBAGLrW.jpg', rating: 7.9 },
+  { tmdbId: 585268,  title: 'War',                    year: '2019', poster: 'https://image.tmdb.org/t/p/w185/yUtaHkL2SDIAZhRApZAyQrAXygn.jpg', rating: 6.9 },
 ];
 
 const CURATED_HINDI_ACTION: HindiTitleDef[] = [
@@ -292,7 +292,7 @@ const CURATED_HINDI_ACTION: HindiTitleDef[] = [
   { tmdbId: 587412,  title: 'K.G.F: Chapter 2',       year: '2022', poster: 'https://image.tmdb.org/t/p/w185/khNVygolU0TxLIDWff5tQlAhZ23.jpg', rating: 7.7 },
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5 },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5 },
-  { tmdbId: 902897,  title: 'Yodha',                  year: '2024', poster: 'https://image.tmdb.org/t/p/w185/eQxU0jU7o8w7fC9B5b8X8m1P3l5.jpg', rating: 6.1 },
+  { tmdbId: 902897,  title: 'Yodha',                  year: '2024', poster: 'https://image.tmdb.org/t/p/w185/pnoOhdjceFu62dns1B1pfbdZOEy.jpg', rating: 6.1 },
   { tmdbId: 599925,  title: 'Shershaah',              year: '2021', poster: 'https://image.tmdb.org/t/p/w185/zGvFnwoXJKrYnKhoVPytqkqCJ8V.jpg', rating: 7.8 },
 ];
 
@@ -302,40 +302,40 @@ const CURATED_HINDI_COMEDY: HindiTitleDef[] = [
   { tmdbId: 984101,  title: 'Bad Newz',               year: '2024', poster: 'https://image.tmdb.org/t/p/w185/qDlqxGATpYBWqGciPB4tmQm3bFT.jpg', rating: 5.5 },
   { tmdbId: 1187058, title: 'Munjya',                 year: '2024', poster: 'https://image.tmdb.org/t/p/w185/ylYdXu0SM79Qs7vOz6q7mBxanVD.jpg', rating: 6.5 },
   { tmdbId: 960876,  title: 'Dunki',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kPRb1mbVHGop0egQ7153y0lhzGL.jpg', rating: 6.8 },
-  { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/580489.jpg', rating: 6.3 },
+  { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/fw0oMHiMt9qOuKEJEmzFiCNAnXc.jpg', rating: 6.3 },
   { tmdbId: 848116,  title: 'Rocky Aur Rani Kii Prem Kahaani', year: '2023', poster: 'https://image.tmdb.org/t/p/w185/vTQIqlxUkOuyf2UKhlM2OUaFGKz.jpg', rating: 6.7 },
-  { tmdbId: 20453,   title: '3 Idiots',               year: '2009', poster: 'https://image.tmdb.org/t/p/w185/20453.jpg', rating: 8.4 },
-  { tmdbId: 297222,  title: 'PK',                     year: '2014', poster: 'https://image.tmdb.org/t/p/w185/297222.jpg', rating: 7.7 },
-  { tmdbId: 592834,  title: 'Chhichhore',             year: '2019', poster: 'https://image.tmdb.org/t/p/w185/592834.jpg', rating: 7.5 },
+  { tmdbId: 20453,   title: '3 Idiots',               year: '2009', poster: 'https://image.tmdb.org/t/p/w185/66A9MqXOyVFCssoloscw79z8Tew.jpg', rating: 8.4 },
+  { tmdbId: 297222,  title: 'PK',                     year: '2014', poster: 'https://image.tmdb.org/t/p/w185/z2x2Y4tncefsIU7h82gmUM5vnBJ.jpg', rating: 7.7 },
+  { tmdbId: 592834,  title: 'Chhichhore',             year: '2019', poster: 'https://image.tmdb.org/t/p/w185/56snL7jpuKS80WBSXJCg59XdvM3.jpg', rating: 7.5 },
 ];
 
 const CURATED_HINDI_THRILLER: HindiTitleDef[] = [
   { tmdbId: 1029827, title: 'Drishyam 2',             year: '2022', poster: 'https://image.tmdb.org/t/p/w185/wk8Vu0DI0MiNLaXXiVqAwjLRKL5.jpg', rating: 8.1 },
   { tmdbId: 1187619, title: 'Shaitaan',               year: '2024', poster: 'https://image.tmdb.org/t/p/w185/oRvFzcagAcC6Q317xtV7QXzwBnj.jpg', rating: 6.7 },
   { tmdbId: 1233531, title: 'Article 370',            year: '2024', poster: 'https://image.tmdb.org/t/p/w185/9VTemjHMpyxzfC3JsG2aFy8Bf9Y.jpg', rating: 7.2 },
-  { tmdbId: 896350,  title: 'Merry Christmas',         year: '2024', poster: 'https://image.tmdb.org/t/p/w185/d2e1B4r8l8k3N5b7C9a1M4w7P2y.jpg', rating: 7.0 },
-  { tmdbId: 748783,  title: 'The Kashmir Files',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/748783.jpg', rating: 7.2 },
-  { tmdbId: 534780,  title: 'Andhadhun',              year: '2018', poster: 'https://image.tmdb.org/t/p/w185/534780.jpg', rating: 8.2 },
-  { tmdbId: 559907,  title: 'Badla',                  year: '2019', poster: 'https://image.tmdb.org/t/p/w185/559907.jpg', rating: 7.1 },
-  { tmdbId: 341012,  title: 'Drishyam',               year: '2015', poster: 'https://image.tmdb.org/t/p/w185/341012.jpg', rating: 8.3 },
-  { tmdbId: 509967,  title: 'Raazi',                  year: '2018', poster: 'https://image.tmdb.org/t/p/w185/509967.jpg', rating: 7.7 },
+  { tmdbId: 896350,  title: 'Merry Christmas',         year: '2024', poster: 'https://image.tmdb.org/t/p/w185/xzzny20uTtIit2VnxSdAFKcOFmU.jpg', rating: 7.0 },
+  { tmdbId: 748783,  title: 'The Kashmir Files',      year: '2022', poster: 'https://image.tmdb.org/t/p/w185/2VvjJFDBFYkVgr89BjqbUl26QyW.jpg', rating: 7.2 },
+  { tmdbId: 534780,  title: 'Andhadhun',              year: '2018', poster: 'https://image.tmdb.org/t/p/w185/dy3K6hNvwE05siGgiLJcEiwgpdO.jpg', rating: 8.2 },
+  { tmdbId: 559907,  title: 'Badla',                  year: '2019', poster: 'https://image.tmdb.org/t/p/w185/cl8qaliwax7BvJg1AnxIca832F7.jpg', rating: 7.1 },
+  { tmdbId: 341012,  title: 'Drishyam',               year: '2015', poster: 'https://image.tmdb.org/t/p/w185/gIClWRv5OSe8rl5Koi0AeUcCZ9Z.jpg', rating: 8.3 },
+  { tmdbId: 509967,  title: 'Raazi',                  year: '2018', poster: 'https://image.tmdb.org/t/p/w185/l9VJoRj0CYBURsnetvazq73FOfz.jpg', rating: 7.7 },
 ];
 
 const CURATED_HINDI_SERIES_LIST: HindiTitleDef[] = [
-  { tmdbId: 79141,   title: 'Sacred Games',           year: '2018', poster: 'https://image.tmdb.org/t/p/w185/79141.jpg', rating: 8.1 },
-  { tmdbId: 84661,   title: 'Mirzapur',               year: '2018', poster: 'https://image.tmdb.org/t/p/w185/84661.jpg', rating: 8.4 },
-  { tmdbId: 93405,   title: 'The Family Man',         year: '2019', poster: 'https://image.tmdb.org/t/p/w185/93405.jpg', rating: 8.6 },
-  { tmdbId: 101344,  title: 'Panchayat',              year: '2020', poster: 'https://image.tmdb.org/t/p/w185/101344.jpg', rating: 8.7 },
-  { tmdbId: 103222,  title: 'Paatal Lok',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/103222.jpg', rating: 8.0 },
-  { tmdbId: 200843,  title: 'Farzi',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/200843.jpg', rating: 8.2 },
-  { tmdbId: 88040,   title: 'Delhi Crime',            year: '2019', poster: 'https://image.tmdb.org/t/p/w185/88040.jpg', rating: 8.4 },
-  { tmdbId: 88584,   title: 'Kota Factory',           year: '2019', poster: 'https://image.tmdb.org/t/p/w185/88584.jpg', rating: 8.5 },
-  { tmdbId: 112888,  title: 'Mismatched',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/112888.jpg', rating: 7.2 },
-  { tmdbId: 133701,  title: 'Rana Naidu',             year: '2023', poster: 'https://image.tmdb.org/t/p/w185/133701.jpg', rating: 6.5 },
-  { tmdbId: 97893,   title: 'Jamtara – Sabka Number Ayega', year: '2020', poster: 'https://image.tmdb.org/t/p/w185/97893.jpg', rating: 7.6 },
-  { tmdbId: 238310,  title: 'The Railway Men',        year: '2023', poster: 'https://image.tmdb.org/t/p/w185/238310.jpg', rating: 8.1 },
-  { tmdbId: 247169,  title: 'Maamla Legal Hai',       year: '2024', poster: 'https://image.tmdb.org/t/p/w185/247169.jpg', rating: 7.5 },
-  { tmdbId: 99966,   title: 'Asur',                   year: '2020', poster: 'https://image.tmdb.org/t/p/w185/99966.jpg', rating: 8.4 },
+  { tmdbId: 79141,   title: 'Sacred Games',           year: '2018', poster: 'https://image.tmdb.org/t/p/w185/uEbNtFbK4At9WBDGap23lt1qO9n.jpg', rating: 8.1 },
+  { tmdbId: 84661,   title: 'Mirzapur',               year: '2018', poster: 'https://image.tmdb.org/t/p/w185/p0qM8hhlMF5DuxHBzl2EZR6TehX.jpg', rating: 8.4 },
+  { tmdbId: 93405,   title: 'The Family Man',         year: '2019', poster: 'https://image.tmdb.org/t/p/w185/9wToOVsKuf0XeKhlauzCa3D8Gui.jpg', rating: 8.6 },
+  { tmdbId: 101344,  title: 'Panchayat',              year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8ivTX5q2otqXvH815BcOhxVkTPW.jpg', rating: 8.7 },
+  { tmdbId: 103222,  title: 'Paatal Lok',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8Hcq3HoJE4shH7BWkp9UNSFCE3O.jpg', rating: 8.0 },
+  { tmdbId: 200843,  title: 'Farzi',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/cTS86RwEBIDgCgUmjWQTSoPsK6p.jpg', rating: 8.2 },
+  { tmdbId: 88040,   title: 'Delhi Crime',            year: '2019', poster: 'https://image.tmdb.org/t/p/w185/xkpkTj6KGsjSaet0VQaq0aTn31D.jpg', rating: 8.4 },
+  { tmdbId: 88584,   title: 'Kota Factory',           year: '2019', poster: 'https://image.tmdb.org/t/p/w185/fMBookmwL6HjIgIVTjQ6EMr3pCH.jpg', rating: 8.5 },
+  { tmdbId: 112888,  title: 'Mismatched',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/l65kfL6qhTWd858OqGTr3RWwAUj.jpg', rating: 7.2 },
+  { tmdbId: 133701,  title: 'Rana Naidu',             year: '2023', poster: 'https://image.tmdb.org/t/p/w185/4kUF7cO76W4vEx70KVfwmju6Vud.jpg', rating: 6.5 },
+  { tmdbId: 97893,   title: 'Jamtara – Sabka Number Ayega', year: '2020', poster: 'https://image.tmdb.org/t/p/w185/wqWsyazYqBceNMyRIg9q8HSJEcw.jpg', rating: 7.6 },
+  { tmdbId: 238310,  title: 'The Railway Men',        year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kOYlMHtNSqnf1FgsoK1JJypfkrY.jpg', rating: 8.1 },
+  { tmdbId: 247169,  title: 'Maamla Legal Hai',       year: '2024', poster: 'https://image.tmdb.org/t/p/w185/tDP5vC5wxSpHKx88RdyRpdaSo2u.jpg', rating: 7.5 },
+  { tmdbId: 99966,   title: 'Asur',                   year: '2020', poster: 'https://image.tmdb.org/t/p/w185/hJn71rU1VXNJpAMiWwvSxxaFU00.jpg', rating: 8.4 },
 ];
 
 /**
@@ -430,7 +430,7 @@ async function getPlatformHindiRows(platform: StreamingPlatformId, region: strin
       { tmdbId: 960876,  title: 'Dunki', year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kPRb1mbVHGop0egQ7153y0lhzGL.jpg' },
       { tmdbId: 781732,  title: 'Animal', year: '2023', poster: 'https://image.tmdb.org/t/p/w185/hr9rjR3J0xBBKmlJ4n3gHId9ccx.jpg' },
       { tmdbId: 1163258, title: '12th Fail', year: '2023', poster: 'https://image.tmdb.org/t/p/w185/eebUPRI4Z5e1Z7Hev4JZAwMIFkX.jpg' },
-      { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2', year: '2022', poster: 'https://image.tmdb.org/t/p/w185/580489.jpg' },
+      { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2', year: '2022', poster: 'https://image.tmdb.org/t/p/w185/fw0oMHiMt9qOuKEJEmzFiCNAnXc.jpg' },
     ];
     for (const def of netflixHindiTitles) {
       if (!platformMoviePool.some((m) => m.tmdbId === def.tmdbId)) {

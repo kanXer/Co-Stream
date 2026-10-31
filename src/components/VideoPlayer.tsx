@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  EyeOff,
   FastForward,
   Languages,
   ListVideo,
@@ -312,6 +313,21 @@ export function VideoPlayer() {
       return;
     }
 
+    // Immediately teardown previous video & HLS stream for fast one-click video change
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.removeAttribute('src');
+      videoRef.current.load();
+    }
+    setSource(null);
+    setDirectUrl(null);
+    setHeldVideoFrame(null);
+    setScrubbingTime(null);
+
     let active = true;
     const itemAtStart = currentItem;
     const applySource = async (playback: PlaybackSource | null | undefined) => {
@@ -531,34 +547,23 @@ export function VideoPlayer() {
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        // ABR: start at -1 (auto) so HLS.js picks the best level for the
-        // measured connection. Seed the EWMA with a conservative 3 Mbps
-        // estimate so it doesn't overshoot on the first segment fetch.
         startLevel: -1,
-        abrEwmaDefaultEstimate: 3_000_000,   // 3 Mbps initial estimate
+        startFragPrefetch: true,
+        testBandwidth: false,
+        abrEwmaDefaultEstimate: 1_500_000,
         abrEwmaFastLive: 2,
         abrEwmaSlowLive: 9,
         abrEwmaFastVoD: 2,
         abrEwmaSlowVoD: 9,
-        // Don't cap by player size — user can manually pick 1080p even on
-        // a small viewport. ABR will still adapt automatically.
         capLevelToPlayerSize: false,
-        // Buffer: 45 s ahead gives a good stall-free cushion on typical
-        // connections without blowing the memory budget.
-        maxBufferLength: 45,
-        maxMaxBufferLength: 90,
-        maxBufferSize: 50 * 1024 * 1024,     // 50 MB
-        // Back-buffer: 30 s so backward seeks are instant.
+        maxBufferLength: 20,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 30 * 1024 * 1024,
         backBufferLength: 30,
-        // Wider hole tolerance — small timestamp gaps should NOT stall.
         maxBufferHole: 1.5,
-        // Recovery watchdog — trigger faster on high-buffer stalls.
         highBufferWatchdogPeriod: 3,
-        // Fragment nudge: keep trying for up to 10 nudges.
         nudgeOffset: 0.3,
         nudgeMaxRetry: 10,
-        // Retry config — generous retries with short delays to recover
-        // from transient CDN hiccups without showing an error.
         manifestLoadingMaxRetry: 6,
         manifestLoadingRetryDelay: 400,
         manifestLoadingTimeOut: 15000,
@@ -568,8 +573,6 @@ export function VideoPlayer() {
         fragLoadingMaxRetry: 6,
         fragLoadingRetryDelay: 400,
         fragLoadingTimeOut: 20000,
-        // Always test bandwidth for accurate initial level selection.
-        testBandwidth: true,
         progressive: true,
       });
       // No level cap — all quality levels (480p, 720p, 1080p) available.
@@ -812,6 +815,33 @@ export function VideoPlayer() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOrientationOrResize = () => {
+      // Clean View on Rotation: In landscape mode or rotation, close menus and auto-hide HUD for clean view
+      if (typeof window !== 'undefined' && window.innerWidth > window.innerHeight) {
+        setPlayerMenu(null);
+        if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
+        controlsTimerRef.current = setTimeout(() => {
+          setShowControls(false);
+        }, 1200);
+      }
+    };
+
+    window.addEventListener('orientationchange', handleOrientationOrResize);
+    window.addEventListener('resize', handleOrientationOrResize);
+    try {
+      screen.orientation?.addEventListener?.('change', handleOrientationOrResize);
+    } catch {}
+
+    return () => {
+      window.removeEventListener('orientationchange', handleOrientationOrResize);
+      window.removeEventListener('resize', handleOrientationOrResize);
+      try {
+        screen.orientation?.removeEventListener?.('change', handleOrientationOrResize);
+      } catch {}
+    };
+  }, []);
+
   useEffect(() => () => {
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -968,13 +998,35 @@ export function VideoPlayer() {
 
   const animatedTogglePlay = () => {
     if (isEnded) {
-      seek(0);
+      seekDirectly(0);
       return;
     }
-    setControlPulse(isPlaying ? 'pause' : 'play');
+    const video = videoRef.current;
+    if (video && source?.kind === 'direct') {
+      if (video.paused) {
+        setControlPulse('play');
+        video.play().catch(() => undefined);
+        reportPlayback({ isPlaying: true });
+      } else {
+        setControlPulse('pause');
+        video.pause();
+        reportPlayback({ isPlaying: false });
+      }
+    } else if (source?.kind === 'youtube' && youtubePlayerRef.current) {
+      if (isPlaying) {
+        setControlPulse('pause');
+        youtubePlayerRef.current.pauseVideo();
+        reportPlayback({ isPlaying: false });
+      } else {
+        setControlPulse('play');
+        youtubePlayerRef.current.playVideo();
+        reportPlayback({ isPlaying: true });
+      }
+    } else {
+      togglePlay();
+    }
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
-    pulseTimerRef.current = setTimeout(() => setControlPulse(null), 520);
-    togglePlay();
+    pulseTimerRef.current = setTimeout(() => setControlPulse(null), 400);
     revealControls();
   };
 
@@ -993,26 +1045,31 @@ export function VideoPlayer() {
     fitTimerRef.current = setTimeout(() => setFitFeedback(null), 1000);
   };
 
-  const seekWithFrameHold = (seconds: number) => {
+  const seekDirectly = (seconds: number) => {
     const video = videoRef.current;
-    if (!video || source?.kind !== 'direct') {
-      seek(seconds);
-      return;
+    const safeTarget = Math.max(0, Math.min(seconds, duration || seconds));
+    if (source?.kind === 'direct' && video) {
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.startLoad(safeTarget);
+        } catch {}
+      }
+      video.currentTime = safeTarget;
+      reportPlayback({ currentTime: safeTarget });
+      updateWatchProgress(currentItem.id, safeTarget, video.duration || currentItem.durationSeconds);
+    } else if (source?.kind === 'youtube' && youtubePlayerRef.current) {
+      youtubePlayerRef.current.seekTo(safeTarget, true);
+      reportPlayback({ currentTime: safeTarget });
+      updateWatchProgress(currentItem.id, safeTarget, duration);
+    } else {
+      seek(safeTarget);
     }
-    if (!seekHoldRef.current.active) {
-      seekHoldRef.current = { active: true, resume: !video.paused || isPlaying };
-      setHeldVideoFrame(captureVideoFrame(video));
-      video.pause();
-    }
-    if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
-    seekHoldTimerRef.current = setTimeout(() => releaseHeldSeek(video), 7000);
-    seek(Math.max(0, Math.min(seconds, video.duration || seconds)));
   };
 
   const seekBy = (deltaSeconds: number) => {
     const current = videoRef.current?.currentTime ?? currentTime;
     const target = Math.max(0, Math.min(current + deltaSeconds, duration || current + deltaSeconds));
-    seekWithFrameHold(target);
+    seekDirectly(target);
     revealControls();
   };
 
@@ -1120,7 +1177,7 @@ export function VideoPlayer() {
       if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
       lastTapRef.current = null;
       const position = videoRef.current?.currentTime ?? currentTime;
-      seekWithFrameHold(position + (side === 'left' ? -10 : 10));
+      seekDirectly(position + (side === 'left' ? -10 : 10));
       setSeekFeedback(side);
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
       feedbackTimerRef.current = setTimeout(() => setSeekFeedback(null), 650);
@@ -1140,16 +1197,56 @@ export function VideoPlayer() {
     }, 330);
   };
 
-  const handleScrubberChange = (event: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+  const isScrubbingRef = useRef(false);
+
+  const calculateScrubTarget = (clientX: number) => {
     const el = scrubberRef.current;
-    if (!el || duration <= 0) return;
+    if (!el || duration <= 0) return 0;
     const rect = el.getBoundingClientRect();
-    const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
     const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const target = duration * fraction;
-    seekWithFrameHold(target);
-    setScrubbingTime(null);
+    return duration * fraction;
+  };
+
+  const handleScrubberPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {}
+    isScrubbingRef.current = true;
+    const target = calculateScrubTarget(event.clientX);
+    setScrubbingTime(target);
     revealControls();
+  };
+
+  const handleScrubberPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbingRef.current) return;
+    event.stopPropagation();
+    const target = calculateScrubTarget(event.clientX);
+    setScrubbingTime(target);
+    revealControls();
+  };
+
+  const handleScrubberPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbingRef.current) return;
+    event.stopPropagation();
+    isScrubbingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    const target = calculateScrubTarget(event.clientX);
+    setScrubbingTime(null);
+    seekDirectly(target);
+    revealControls();
+  };
+
+  const handleScrubberPointerCancel = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbingRef.current) return;
+    event.stopPropagation();
+    isScrubbingRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {}
+    setScrubbingTime(null);
   };
 
   const share = () => {
@@ -1302,7 +1399,7 @@ export function VideoPlayer() {
                   </video>
                 )}
 
-                {source?.kind === 'direct' && heldVideoFrame && (
+                {source?.kind === 'direct' && fullscreenTransitioning && heldVideoFrame && (
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-0 z-[5] bg-black bg-center bg-no-repeat"
@@ -1413,6 +1510,18 @@ export function VideoPlayer() {
                           </button>
                         )}
 
+                        {/* Clean View Toggle */}
+                        <button
+                          onClick={() => {
+                            setShowControls(false);
+                            setPlayerMenu(null);
+                          }}
+                          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white backdrop-blur-md transition active:scale-95"
+                          title="Clean View (Hide all controls)"
+                        >
+                          <EyeOff size={18} />
+                        </button>
+
                         {/* Settings */}
                         <button
                           onClick={() => setPlayerMenu(playerMenu ? null : 'settings')}
@@ -1506,13 +1615,26 @@ export function VideoPlayer() {
                         <span className="text-white/60">{formatTime(duration)}</span>
                       </div>
 
-                      {/* Cinema Scrubber */}
+                      {/* Cinema Scrubber with full drag and touch support */}
                       <div
                         ref={scrubberRef}
-                        onClick={handleScrubberChange}
-                        className="relative h-6 flex items-center cursor-pointer group"
+                        onPointerDown={handleScrubberPointerDown}
+                        onPointerMove={handleScrubberPointerMove}
+                        onPointerUp={handleScrubberPointerUp}
+                        onPointerCancel={handleScrubberPointerCancel}
+                        className="relative h-10 -my-2 flex items-center cursor-pointer group select-none touch-none"
                       >
-                        <div className="w-full h-1.5 rounded-full bg-white/20 overflow-hidden relative">
+                        {/* Floating Scrub Badge */}
+                        {scrubbingTime !== null && (
+                          <div
+                            className="absolute -top-7 -translate-x-1/2 px-2.5 py-1 rounded-md bg-[#0e1315]/95 border border-[#7fffd2]/40 text-[#7fffd2] text-[11px] font-black pointer-events-none shadow-2xl tracking-wider backdrop-blur-md"
+                            style={{ left: `${progressPercent}%` }}
+                          >
+                            {formatTime(scrubbingTime)}
+                          </div>
+                        )}
+
+                        <div className="w-full h-2 rounded-full bg-white/20 overflow-hidden relative transition-[height] group-hover:h-2.5">
                           {/* Buffered bar */}
                           <div
                             className="absolute inset-y-0 left-0 bg-white/30 rounded-full transition-[width] duration-300"
@@ -1526,7 +1648,9 @@ export function VideoPlayer() {
                         </div>
                         {/* Thumb */}
                         <div
-                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-white shadow-lg border border-white/40 ring-4 ring-[#7fffd2]/25 transition-transform group-hover:scale-125"
+                          className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-2xl border border-white/40 ring-4 ring-[#7fffd2]/30 transition-transform ${
+                            scrubbingTime !== null ? 'scale-125 ring-[#7fffd2]/60' : 'group-hover:scale-125'
+                          }`}
                           style={{ left: `${progressPercent}%` }}
                         />
                       </div>
@@ -1950,7 +2074,7 @@ export function VideoPlayer() {
             <div className="h-1.5 rounded-full overflow-hidden bg-[var(--line)] relative cursor-pointer" onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
               const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-              seekWithFrameHold((duration || 1) * percent);
+              seekDirectly((duration || 1) * percent);
             }}>
               <div className="h-full bg-[var(--accent)] absolute inset-y-0 left-0 rounded-full" style={{ width: `${progressPercent}%` }} />
             </div>
