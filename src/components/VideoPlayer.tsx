@@ -594,7 +594,21 @@ export function VideoPlayer() {
       reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: false, error: null });
       video.volume = volume;
       video.playbackRate = playbackSpeed;
-      video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
+          .catch(() => {
+            if (!video.muted) {
+              video.muted = true;
+              video.play()
+                .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
+                .catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+            } else {
+              reportPlayback({ isPlaying: false, isLoading: false });
+            }
+          });
+      }
       episodeDetailsLoaderRef.current?.();
     };
 
@@ -650,11 +664,16 @@ export function VideoPlayer() {
             break;
           }
         }
-        // Wait until at least 5s of buffer ahead is ready OR at least 2 fragments buffered for smooth playback
-        if (ahead >= 5 || bufferedFragsCount >= 2) {
+        if (ahead >= 0.2 || bufferedFragsCount >= 1) {
           initialPlayStarted = true;
           reportPlayback({ isLoading: false });
-          video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+          video.play().catch(() => {
+            if (!video.muted) {
+              video.muted = true;
+              video.play().catch(() => undefined);
+            }
+            reportPlayback({ isPlaying: false, isLoading: false });
+          });
         }
       };
 
@@ -673,14 +692,11 @@ export function VideoPlayer() {
         video.playbackRate = playbackSpeed;
         episodeDetailsLoaderRef.current?.();
 
-        // Safety fallback timer (2.2s): if fragments are extra large, ensure playback initiates
         setTimeout(() => {
           if (!initialPlayStarted) {
-            initialPlayStarted = true;
-            reportPlayback({ isLoading: false });
-            video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+            tryStartPlay();
           }
-        }, 2200);
+        }, 400);
 
         if (data.levels && data.levels.length > 1) {
           const parsed = data.levels.map((lvl, index) => ({
@@ -735,8 +751,6 @@ export function VideoPlayer() {
           reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be played.' });
         }
       });
-    } else {
-      video.src = directUrl;
     }
 
     const onTime = () => {
@@ -760,8 +774,6 @@ export function VideoPlayer() {
       stallTimer = setTimeout(() => {
         if (video.readyState < 3) {
           if (hlsRef.current) {
-            // For HLS: nudge the stream forward to escape the stall.
-            // If the buffer is simply dry, startLoad() re-triggers fetching.
             try {
               hlsRef.current.startLoad();
             } catch {
@@ -774,18 +786,11 @@ export function VideoPlayer() {
       }, 2000);
     };
     const onCanPlay = () => {
-      const current = video.currentTime;
-      let ahead = 0;
-      for (let i = 0; i < video.buffered.length; i++) {
-        if (video.buffered.start(i) <= current + 0.1 && current <= video.buffered.end(i)) {
-          ahead = video.buffered.end(i) - current;
-          break;
-        }
-      }
-      if (ahead >= 2 || video.readyState >= 3) {
-        if (stallTimer) clearTimeout(stallTimer);
-        stallTimer = null;
-        reportPlayback({ isLoading: false, error: null });
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = null;
+      reportPlayback({ isLoading: false, error: null });
+      if (video.paused && !isEnded) {
+        video.play().catch(() => undefined);
       }
     };
     const onSeeked = () => {
@@ -807,6 +812,15 @@ export function VideoPlayer() {
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', onError);
+
+    if (!isHls) {
+      if (video.src !== directUrl) {
+        video.src = directUrl;
+      }
+      if (video.readyState >= 1) {
+        onLoaded();
+      }
+    }
 
     const controller: PlaybackController = {
       play: () => { video.play().catch(() => undefined); },
@@ -1564,14 +1578,11 @@ export function VideoPlayer() {
                 {source?.kind === 'direct' && directUrl && (
                   <video
                     ref={videoRef}
-                    key={`${currentItem.id}-${directUrl}`}
-                    src={directUrl && directUrl.includes('.m3u8') ? undefined : directUrl}
+                    key={currentItem.id}
                     poster={currentItem.backdropUrl || currentItem.posterUrl || undefined}
                     playsInline
                     controls={false}
                     preload="auto"
-                    autoPlay
-                    muted
                     style={{
                       filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
                       transform: 'translateZ(0)',

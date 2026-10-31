@@ -93,7 +93,7 @@ export function DetailsSheet({
 
   const media = details || item;
   const saved = isWatchlisted(media.id);
-  const canPlay = Boolean(media.playback?.url);
+  const canPlay = media.mediaType === 'tv' ? (episodes.length > 0 || !loading) : Boolean(media.playback?.url || details);
   const durationMinutes = media.durationSeconds ? Math.round(media.durationSeconds / 60) : 0;
 
   const loadSeason = async (season: number) => {
@@ -132,9 +132,13 @@ export function DetailsSheet({
   };
 
   const play = () => {
-    if (!media.playback) return;
-    if (media.mediaType === 'tv' && episodes.length) {
-      void playEpisode(episodes[0]);
+    if (media.mediaType === 'tv') {
+      if (episodes.length > 0) {
+        void playEpisode(episodes[0]);
+        return;
+      }
+      playItem(media, [media]);
+      onClose();
       return;
     }
     const queue = details ? [details, ...(details.related || []).filter((entry) => entry.playback)] : [media];
