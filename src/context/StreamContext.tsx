@@ -185,16 +185,18 @@ export function journeyKey(item: {
 }
 
 function normalizeRecentItem(item: MediaItem): MediaItem {
+  const genres = Array.isArray(item.genres) ? item.genres : [];
   if (item.mediaType === 'tv') {
     const cleanTitle = extractCleanSeriesTitle(item.title);
     return {
       ...item,
       title: cleanTitle || item.title,
+      genres,
       selectedSeason: item.selectedSeason || 1,
       selectedEpisode: item.selectedEpisode || 1,
     };
   }
-  return { ...item };
+  return { ...item, genres };
 }
 
 function compactRecentItems(items: MediaItem[]): MediaItem[] {
@@ -623,7 +625,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     if (!currentItem || !('mediaSession' in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentItem.title,
-      artist: currentItem.genres.join(' • ') || (currentItem.mediaType === 'movie' ? 'Movie' : 'Series'),
+      artist: (currentItem.genres || []).join(' • ') || (currentItem.mediaType === 'movie' ? 'Movie' : 'Series'),
       album: 'Co Stream',
       artwork: currentItem.posterUrl ? [{ src: currentItem.posterUrl }] : [],
     });

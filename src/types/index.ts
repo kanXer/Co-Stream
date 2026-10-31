@@ -65,7 +65,7 @@ export interface MediaItem {
   rating: number;
   posterUrl: string | null;
   backdropUrl: string | null;
-  genres: string[];
+  genres?: string[];
   durationSeconds: number;
   language: string;
   seasonCount?: number;
@@ -88,7 +88,7 @@ export interface HomeSection {
 }
 
 export interface MediaDetails extends MediaItem {
-  related: MediaItem[];
+  related?: MediaItem[];
 }
 
 export interface UserCollection {

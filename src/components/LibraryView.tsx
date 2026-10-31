@@ -55,7 +55,7 @@ export function LibraryView({
 
   const filterAndSort = (items: MediaItem[]) => {
     const clean = query.trim().toLowerCase();
-    const result = items.filter((item) => !clean || [item.title, item.year, ...item.genres].join(' ').toLowerCase().includes(clean));
+    const result = items.filter((item) => !clean || [item.title, item.year, ...(item.genres || [])].join(' ').toLowerCase().includes(clean));
     if (sort === 'title') return [...result].sort((a, b) => a.title.localeCompare(b.title));
     if (sort === 'year') return [...result].sort((a, b) => b.year.localeCompare(a.year));
     return result;

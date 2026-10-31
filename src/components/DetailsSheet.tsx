@@ -136,7 +136,7 @@ export function DetailsSheet({
       void playEpisode(episodes[0]);
       return;
     }
-    const queue = details ? [details, ...details.related.filter((entry) => entry.playback)] : [media];
+    const queue = details ? [details, ...(details.related || []).filter((entry) => entry.playback)] : [media];
     playItem(media, queue);
   };
 
@@ -227,7 +227,7 @@ export function DetailsSheet({
               <dl className="mt-3 space-y-2.5 text-xs">
                 <div className="flex justify-between gap-3"><dt className="text-[var(--text-faint)]">Type</dt><dd className="font-bold capitalize">{media.mediaType === 'tv' ? 'Series' : 'Movie'}</dd></div>
                 <div className="flex justify-between gap-3"><dt className="text-[var(--text-faint)]">Language</dt><dd className="font-bold uppercase">{media.language}</dd></div>
-                <div className="flex justify-between gap-3"><dt className="text-[var(--text-faint)]">Genres</dt><dd className="font-bold text-right">{media.genres.join(', ') || '—'}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-[var(--text-faint)]">Genres</dt><dd className="font-bold text-right">{(media.genres || []).join(', ') || '—'}</dd></div>
                 {media.episodeCount ? <div className="flex justify-between gap-3"><dt className="text-[var(--text-faint)]">Episodes</dt><dd className="font-bold">{media.episodeCount}</dd></div> : null}
               </dl>
             </div>
@@ -283,11 +283,11 @@ export function DetailsSheet({
             </section>
           ) : null}
 
-          {details?.related.length ? (
+          {(details?.related || []).length > 0 ? (
             <section className="mt-9">
               <div className="mb-4"><p className="eyebrow">Up next</p><h3 className="text-xl font-black">More like this</h3></div>
               <div className="media-grid-scroll mt-4">
-                {details.related.filter((r) => !/^(cid|c\.i\.d)/i.test(r.title.trim()) && r.providerId !== 'tmdb:tv:15226').slice(0, 12).map((related) => <MediaCard key={related.id} item={related} onOpen={(next) => onSelect(next)} />)}
+                {(details?.related || []).filter((r) => !/^(cid|c\.i\.d)/i.test(r.title.trim()) && r.providerId !== 'tmdb:tv:15226').slice(0, 12).map((related) => <MediaCard key={related.id} item={related} onOpen={(next) => onSelect(next)} />)}
               </div>
             </section>
           ) : null}

@@ -1100,7 +1100,7 @@ export function VideoPlayer() {
         overview: episode.overview || currentItem.overview,
         posterUrl: payload.posterUrl || currentItem.posterUrl,
         backdropUrl: episode.stillUrl || currentItem.backdropUrl,
-        genres: currentItem.genres,
+        genres: currentItem.genres || [],
         durationSeconds: episode.runtimeMinutes * 60,
         language: currentItem.language,
         seasonCount: currentItem.seasonCount,
@@ -2170,7 +2170,7 @@ export function VideoPlayer() {
                 <div className="watch-glass rounded-[26px] p-5 lg:sticky lg:top-24">
                   <div className="flex items-start gap-3.5">
                     <div className="watch-poster relative w-16 h-24 rounded-xl overflow-hidden shrink-0">{currentItem.posterUrl && <Image src={currentItem.posterUrl} alt={currentItem.title} fill sizes="64px" className="object-cover" />}</div>
-                    <div className="min-w-0 pt-1"><p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">{source?.label || 'Co-Stream'}{selectedAudio !== 'Original' ? ` • ${selectedAudio}` : ''}</p><h2 className="text-lg font-black leading-tight mt-1 line-clamp-2">{currentItem.title}</h2><p className="watch-muted text-[11px] mt-1">{currentItem.year} • {currentItem.genres.slice(0, 2).join(' • ')}</p></div>
+                    <div className="min-w-0 pt-1"><p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">{source?.label || 'Co-Stream'}{selectedAudio !== 'Original' ? ` • ${selectedAudio}` : ''}</p><h2 className="text-lg font-black leading-tight mt-1 line-clamp-2">{currentItem.title}</h2><p className="watch-muted text-[11px] mt-1">{currentItem.year} • {(currentItem.genres || []).slice(0, 2).join(' • ')}</p></div>
                   </div>
                   <p className="watch-muted mt-4 text-xs leading-6 line-clamp-5">{currentItem.overview}</p>
                   <div className="grid grid-cols-4 gap-2.5 mt-4">
@@ -2241,7 +2241,7 @@ export function VideoPlayer() {
                                 {movie.title}
                               </h4>
                               <p className="watch-muted text-[10px] mt-0.5 font-medium truncate">
-                                {movie.year} {movie.rating ? `• ★ ${movie.rating.toFixed(1)}` : ''}
+                                {movie.year} {movie.rating ? `• ★ ${Number(movie.rating).toFixed(1)}` : ''}
                               </p>
                             </div>
                             <span className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-[#7fffd2] group-hover:text-black flex items-center justify-center text-white transition-all duration-200 shrink-0">

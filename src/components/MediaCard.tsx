@@ -102,7 +102,7 @@ export function MediaRow({ item, onOpen, onPlay }: { item: MediaItem; onOpen: ()
         <p className="text-[11px] text-[var(--text-muted)] truncate mt-1">
           {item.mediaType === 'tv' && item.selectedSeason
             ? `S${item.selectedSeason} E${item.selectedEpisode || 1}`
-            : item.year} • {item.genres.slice(0, 2).join(', ') || (item.mediaType === 'tv' ? 'Series' : 'Movie')}
+            : item.year} • {(item.genres || []).slice(0, 2).join(', ') || (item.mediaType === 'tv' ? 'Series' : 'Movie')}
         </p>
         {item.rating > 0 && <p className="text-[10px] text-amber-500 font-bold mt-1">★ {item.rating.toFixed(1)}</p>}
       </div>
