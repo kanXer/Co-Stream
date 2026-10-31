@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       label: resolved.resolution,
       url: proxiedMediaPath(resolved.streamUrl),
       downloadUrl: downloadStream ? proxiedMediaPath(downloadStream.url) : proxiedMediaPath(resolved.streamUrl),
-      mimeType: resolved.streamUrl.includes('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp4',
+      mimeType: (resolved.streamUrl.includes('.m3u8') || resolved.streamUrl.startsWith('synthetic:')) ? 'application/vnd.apple.mpegurl' : 'video/mp4',
       downloadable: true,
       resolvedAt: Date.now(),
       selectedQuality: resolved.resolution,

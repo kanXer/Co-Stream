@@ -223,13 +223,25 @@ export default function HomePage() {
     };
     const onPopState = () => {
       const state = backNavigationState.current;
-      if (document.fullscreenElement) {
-        consumeBack(() => { void document.exitFullscreen().catch(() => undefined); });
+      const doc = document as Document & {
+        webkitFullscreenElement?: Element;
+        webkitExitFullscreen?: () => void;
+      };
+      if (document.fullscreenElement || doc.webkitFullscreenElement) {
+        consumeBack(() => {
+          if (document.exitFullscreen) void document.exitFullscreen().catch(() => undefined);
+          else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+        });
         return;
       }
-      if (state.isExpanded || state.hasPlayer) {
+      if (state.isExpanded) {
         consumeBack(() => {
           setIsExpanded(false);
+        });
+        return;
+      }
+      if (state.hasPlayer) {
+        consumeBack(() => {
           closePlayer();
         });
         return;

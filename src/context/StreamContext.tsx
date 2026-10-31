@@ -48,6 +48,7 @@ export interface PlaybackController {
   play: () => void;
   pause: () => void;
   seek: (seconds: number) => void;
+  syncWithTime?: (seconds: number) => void;
   setVolume: (volume: number) => void;
 }
 
@@ -81,6 +82,7 @@ interface StreamContextValue {
   togglePlay: () => void;
   pause: () => void;
   seek: (seconds: number) => void;
+  syncWithTime: (seconds: number) => void;
   nextItem: () => void;
   previousItem: () => void;
   handleEnded: () => void;
@@ -94,6 +96,7 @@ interface StreamContextValue {
     error: string | null;
     currentTime: number;
     duration: number;
+    forceTimeUpdate?: boolean;
   }>) => void;
 
   watchlist: MediaItem[];
@@ -106,7 +109,7 @@ interface StreamContextValue {
   addToCollection: (collectionId: string, item: MediaItem) => void;
   removeFromCollection: (collectionId: string, itemId: string) => void;
   watchProgress: Record<string, WatchProgress>;
-  updateWatchProgress: (itemId: string, position: number, total: number) => void;
+  updateWatchProgress: (itemId: string, position: number, total: number, force?: boolean) => void;
   searchHistory: string[];
   addSearchHistory: (term: string) => void;
   removeSearchHistory: (term: string) => void;
@@ -319,18 +322,30 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     saveJson('co_languages', next);
   };
 
+  const lastStateTimeUpdateRef = useRef(0);
   const reportPlayback = useCallback((state: Partial<{
     isPlaying: boolean;
     isLoading: boolean;
     error: string | null;
     currentTime: number;
     duration: number;
+    forceTimeUpdate?: boolean;
   }>) => {
-    if (state.isPlaying !== undefined) setIsPlaying(state.isPlaying);
-    if (state.isLoading !== undefined) setIsLoading(state.isLoading);
-    if (state.error !== undefined) setPlaybackError(state.error);
-    if (state.currentTime !== undefined) setCurrentTime(state.currentTime);
-    if (state.duration !== undefined) setDuration(state.duration);
+    if (state.isPlaying !== undefined) setIsPlaying((prev) => (prev !== state.isPlaying ? state.isPlaying! : prev));
+    if (state.isLoading !== undefined) setIsLoading((prev) => (prev !== state.isLoading ? state.isLoading! : prev));
+    if (state.error !== undefined) setPlaybackError((prev) => (prev !== state.error ? state.error! : prev));
+    if (state.duration !== undefined) {
+      setDuration((prev) => (Math.abs(prev - state.duration!) >= 0.5 ? state.duration! : prev));
+    }
+    if (state.currentTime !== undefined) {
+      currentTimeRef.current = state.currentTime;
+      const now = Date.now();
+      // Throttle React state updates so high-frequency timeupdates don't re-render StreamProvider and page.tsx
+      if (state.forceTimeUpdate || now - lastStateTimeUpdateRef.current >= 3500) {
+        lastStateTimeUpdateRef.current = now;
+        setCurrentTime((prev) => (Math.abs(prev - state.currentTime!) >= 0.5 ? state.currentTime! : prev));
+      }
+    }
   }, []);
 
   const registerController = useCallback((controller: PlaybackController | null) => {
@@ -401,12 +416,29 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     setIsExpanded(false);
   }, []);
 
-  const pause = useCallback(() => controllerRef.current?.pause(), []);
+  const pause = useCallback(() => {
+    controllerRef.current?.pause();
+    setCurrentTime(currentTimeRef.current);
+  }, []);
   const togglePlay = useCallback(() => {
     if (isPlaying) controllerRef.current?.pause();
     else controllerRef.current?.play();
   }, [isPlaying]);
-  const seek = useCallback((seconds: number) => controllerRef.current?.seek(Math.max(0, seconds)), []);
+  const seek = useCallback((seconds: number) => {
+    const target = Math.max(0, seconds);
+    controllerRef.current?.seek(target);
+    currentTimeRef.current = target;
+    setCurrentTime(target);
+  }, []);
+  const syncWithTime = useCallback((seconds: number) => {
+    const target = Math.max(0, seconds);
+    if (controllerRef.current?.syncWithTime) {
+      controllerRef.current.syncWithTime(target);
+    } else {
+      controllerRef.current?.seek(target);
+    }
+    currentTimeRef.current = target;
+  }, []);
 
   const goToIndex = useCallback((index: number) => {
     const items = queueRef.current;
@@ -545,30 +577,38 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const updateWatchProgress = useCallback((itemId: string, position: number, total: number) => {
+  const lastProgressStateUpdateRef = useRef(0);
+  const updateWatchProgress = useCallback((itemId: string, position: number, total: number, force?: boolean) => {
     if (!Number.isFinite(position) || !Number.isFinite(total) || total <= 0) return;
     const current = currentRef.current;
     const rootKey = current ? journeyKey(current) : null;
+    const now = Date.now();
+
+    // Throttle React state updates to at most once every 3 seconds unless forced (pause/ended/unmount)
+    if (!force && now - lastProgressStateUpdateRef.current < 3000 && position < total - 2) {
+      return;
+    }
+    lastProgressStateUpdateRef.current = now;
 
     setWatchProgress((progress) => {
       const next = {
         ...progress,
-        [itemId]: { position, duration: total, updatedAt: Date.now() },
+        [itemId]: { position, duration: total, updatedAt: now },
       };
       if (rootKey) {
-        next[rootKey] = { position, duration: total, updatedAt: Date.now() };
+        next[rootKey] = { position, duration: total, updatedAt: now };
       }
       if (current?.id && current.id !== itemId) {
-        next[current.id] = { position, duration: total, updatedAt: Date.now() };
+        next[current.id] = { position, duration: total, updatedAt: now };
       }
-      if (Date.now() - lastProgressSaveRef.current > 4000 || position >= total - 2) {
+      if (now - lastProgressSaveRef.current > 4000 || position >= total - 2 || force) {
         saveJson('co_progress', next);
-        lastProgressSaveRef.current = Date.now();
+        lastProgressSaveRef.current = now;
       }
       return next;
     });
 
-    if (current && (Date.now() - lastProgressSaveRef.current > 4000 || position >= total - 2)) {
+    if (current && (now - lastProgressSaveRef.current > 4000 || position >= total - 2 || force)) {
       setRecentItems((items) => {
         const next = putRecentItem(items, current);
         saveJson('co_recent', next);
@@ -672,6 +712,7 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
       togglePlay,
       pause,
       seek,
+      syncWithTime,
       nextItem,
       previousItem,
       handleEnded,

@@ -651,14 +651,7 @@ export async function resolveCurrentNetMirrorStream(options: {
         }
       }
 
-      if (netId && SYNTHETIC_PLAYLISTS[netId]) {
-        // Direct synthetic HLS master generation — bypasses net52.cc Cloudflare datacenter block
-        candidates.push(
-          { url: `synthetic:${netId}`, resolution: 720 },
-          { url: `synthetic:${netId}`, resolution: 1080 },
-          { url: `synthetic:${netId}`, resolution: 480 },
-        );
-      } else if (netId) {
+      if (netId) {
         const playlist = await getNetMirrorPlaylist(netId).catch(() => null);
         if (playlist?.sources && playlist.sources.length > 0) {
           const config = await getNetMirrorConfig();
@@ -672,6 +665,15 @@ export async function resolveCurrentNetMirrorStream(options: {
             }
           }
         }
+      }
+
+      if (candidates.length === 0 && netId && SYNTHETIC_PLAYLISTS[netId]) {
+        // Direct synthetic HLS master generation fallback
+        candidates.push(
+          { url: `synthetic:${netId}`, resolution: 720 },
+          { url: `synthetic:${netId}`, resolution: 1080 },
+          { url: `synthetic:${netId}`, resolution: 480 },
+        );
       }
     } catch (fallbackError) {
       console.warn('NetMirror classic playlist fallback failed:', fallbackError);
@@ -797,17 +799,16 @@ export function generateSyntheticMasterManifest(id: string): string | null {
     const a = item.audios[i];
     const isDef = i === 0 ? 'YES' : 'NO';
     const audioUrl = `${item.audioBase}/${a.idx}/${a.idx}.m3u8`;
-    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",LANGUAGE="${a.lang}",NAME="${a.name}",DEFAULT=${isDef},AUTOSELECT=${isDef},URI="${proxiedMediaPath(audioUrl)}"`);
+    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",LANGUAGE="${a.lang}",NAME="${a.name}",DEFAULT=${isDef},AUTOSELECT=${isDef},CODECS="mp4a.40.2",URI="${proxiedMediaPath(audioUrl)}"`);
   }
   const firstAudioUrl = `${item.audioBase}/0/0.m3u8`;
   const resolutions = [
-    { res: '1080p', dim: '1920x1080', bw: 1000001 },
-    { res: '720p',  dim: '1280x720',  bw: 600000, def: true },
-    { res: '480p',  dim: '854x480',   bw: 400000 },
+    { res: '1080p', dim: '1920x1080', bw: 3000000, codecs: 'avc1.640028' },
+    { res: '720p',  dim: '1280x720',  bw: 1800000, codecs: 'avc1.64001f' },
+    { res: '480p',  dim: '854x480',   bw: 800000,  codecs: 'avc1.4d401f' },
   ];
   for (const r of resolutions) {
-    const defAttr = r.def ? ',DEFAULT=YES' : '';
-    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bw},AUDIO="aac"${defAttr},RESOLUTION=${r.dim},CLOSED-CAPTIONS=NONE`);
+    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bw},RESOLUTION=${r.dim},CODECS="${r.codecs}",AUDIO="aac",CLOSED-CAPTIONS=NONE`);
     const synVideoUrl = `${firstAudioUrl}?synthetic_video=${r.res}`;
     lines.push(proxiedMediaPath(synVideoUrl));
   }
@@ -880,7 +881,7 @@ const globalForProxy = globalThis as typeof globalThis & {
 
 const proxyCache = globalForProxy.__coProxyCache || new Map();
 globalForProxy.__coProxyCache = proxyCache;
-const PROXY_CACHE_MAX_BYTES = 768 * 1024;
+const PROXY_CACHE_MAX_BYTES = 8 * 1024 * 1024;
 
 export async function proxyNetMirrorTarget(target: string, request: Request) {
   if (!isAllowedNetMirrorTarget(target)) {
@@ -982,7 +983,7 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     try { return new URL(target).pathname.toLowerCase(); } catch { return ''; }
   })();
   const isLegacySegment = url.hostname.endsWith('.top') && /\/files\/[a-z0-9._-]+\//i.test(url.pathname);
-  const isTransportStream = isLegacySegment && /\.(jpg|jpeg|js|ts|woff2)$/.test(mediaPath) && !isManifest;
+  const isTransportStream = (isLegacySegment || (target.includes('/files/') && /\.(woff2|ts|js|jpg|jpeg)$/i.test(mediaPath))) && !isManifest;
   const resolvedContentType = isTransportStream
     ? 'video/mp2t'
     : (contentType || 'application/octet-stream');
@@ -1091,6 +1092,9 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
         for (const group of invalidAudioGroups) {
           nextLine = nextLine.replace(new RegExp(`,?AUDIO="${group.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'gi'), '');
         }
+        if (nextLine.includes('AUDIO=') && !nextLine.includes('CODECS=')) {
+          nextLine = nextLine.replace(/#EXT-X-STREAM-INF:/i, '#EXT-X-STREAM-INF:CODECS="avc1.640028,mp4a.40.2",');
+        }
         rewritten.push(nextLine);
         continue;
       }
@@ -1112,17 +1116,6 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
 
       if (trimmed.startsWith('#')) {
         rewritten.push(line);
-        continue;
-      }
-
-      // Check if this stream URL is the dummy 220884 video track
-      if (trimmed.includes('/files/220884/') && firstRealAudioUri) {
-        // Extract resolution from trimmed URL or previous line
-        const resMatch = trimmed.match(/(1080p|720p|480p|360p)/i) 
-          || (lineIndex > 0 ? lines[lineIndex - 1].match(/RESOLUTION=\d+x(\d+)/i) : null);
-        const res = resMatch ? (resMatch[1].endsWith('p') ? resMatch[1] : `${resMatch[1]}p`) : '720p';
-        const synTarget = `${firstRealAudioUri}${firstRealAudioUri.includes('?') ? '&' : '?'}synthetic_video=${res}`;
-        rewritten.push(proxiedMediaPath(synTarget));
         continue;
       }
 
@@ -1181,7 +1174,7 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
   const contentLength = Number(upstream.headers.get('content-length') || 0);
   if (!rangeHeader && contentLength > 0 && (contentLength <= PROXY_CACHE_MAX_BYTES || isImage)) {
     const body = Buffer.from(await upstream.arrayBuffer());
-    if (proxyCache.size > 500) proxyCache.clear();
+    if (proxyCache.size > 80) proxyCache.clear();
     proxyCache.set(target, {
       body,
       contentType: resolvedContentType,
