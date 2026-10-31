@@ -89,9 +89,23 @@ function uniqueCatalogItems(items: NetMirrorCatalogItem[]) {
   });
 }
 
+// Titles known to appear in catalogs but have no playable stream on NetMirror.
+// Matched case-insensitively against the exact title string.
+const KNOWN_NON_STREAMABLE: Set<string> = new Set([
+  'cid',
+  'c.i.d.',
+  'c.i.d',
+]);
+
+function isKnownNonStreamable(title: string) {
+  return KNOWN_NON_STREAMABLE.has(title.trim().toLowerCase());
+}
+
 /** Like uniqueCatalogItems but also excludes items explicitly marked as non-streamable. */
 function streamableCatalogItems(items: NetMirrorCatalogItem[]) {
-  return uniqueCatalogItems(items).filter((item) => item.streamable !== false);
+  return uniqueCatalogItems(items).filter(
+    (item) => item.streamable !== false && !isKnownNonStreamable(item.title),
+  );
 }
 
 async function fillHindiAudioTitles(

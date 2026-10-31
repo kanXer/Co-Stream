@@ -363,7 +363,7 @@ export default function HomePage() {
 
       <main className="w-full min-w-0 max-w-7xl mx-auto px-4 sm:px-6">
         {tab === 'home' && (
-          <div className="page-enter min-w-0 pt-5 sm:pt-7 space-y-8">
+          <div className="page-enter min-w-0 pt-5 sm:pt-7 space-y-10">
             <div><p className="text-xs font-semibold text-[var(--text-muted)]">{greeting}, {profile?.name || 'viewer'}</p><h1 className="page-title mt-1">What will we watch?</h1></div>
 
             {heroItem ? (
@@ -422,7 +422,7 @@ export default function HomePage() {
         )}
 
         {(tab === 'movie' || tab === 'tv') && (
-          <div className="page-enter min-w-0 pt-5 sm:pt-7 pb-8 space-y-8">
+          <div className="page-enter min-w-0 pt-5 sm:pt-7 pb-8 space-y-10">
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="eyebrow">{tab === 'movie' ? 'Big screen picks' : 'Binge by season'}</p>
@@ -489,7 +489,20 @@ export default function HomePage() {
 
 function MediaSection({ title, subtitle, items, onOpen, onPlay, ranked = false }: { title: string; subtitle: string; items: MediaItem[]; onOpen: (item: MediaItem) => void; onPlay: (item: MediaItem) => void; ranked?: boolean }) {
   if (!items.length) return null;
-  return <section><div className="section-heading"><div><p className="eyebrow">{subtitle}</p><h2>{title}</h2></div><span className="text-[10px] font-bold text-[var(--text-faint)]">{items.length} titles</span></div><div className="media-grid-scroll mt-4">{items.map((item, index) => <MediaCard key={item.id} item={item} onOpen={onOpen} onPlay={onPlay} rank={ranked && index < 10 ? index + 1 : undefined} />)}</div></section>;
+  return (
+    <section className="space-y-3">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">{subtitle}</p>
+          <h2>{title}</h2>
+        </div>
+        <span className="text-[10px] font-bold text-[var(--text-faint)] shrink-0">{items.length} titles</span>
+      </div>
+      <div className="media-grid-scroll">
+        {items.map((item, index) => <MediaCard key={item.id} item={item} onOpen={onOpen} onPlay={onPlay} rank={ranked && index < 10 ? index + 1 : undefined} />)}
+      </div>
+    </section>
+  );
 }
 
 function TopNav({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
