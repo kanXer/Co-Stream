@@ -36,7 +36,7 @@ import {
   VolumeX,
   X,
 } from 'lucide-react';
-import { useStream, type PlaybackController } from '@/context/StreamContext';
+import { useStream, journeyKey, type PlaybackController } from '@/context/StreamContext';
 import { OfflineButton } from '@/components/OfflineButton';
 import { getOfflinePlaybackUrl, isVideoDownloaded } from '@/lib/offlineStore';
 import { resolveNetMirrorPlayback } from '@/lib/playbackClient';
@@ -537,7 +537,8 @@ export function VideoPlayer() {
   useEffect(() => {
     if (source?.kind !== 'direct' || !directUrl || !videoRef.current || !currentItem) return;
     const video = videoRef.current;
-    const resumeAt = pendingSeekRef.current ?? watchProgress[currentItem.id]?.position ?? 0;
+    const rootKey = journeyKey(currentItem);
+    const resumeAt = pendingSeekRef.current ?? watchProgress[currentItem.id]?.position ?? watchProgress[rootKey]?.position ?? 0;
     const isHls = Boolean(directUrl && (directUrl.includes('.m3u8') || source?.mimeType?.includes('mpegurl')));
     let hlsInstance: Hls | null = null;
     let stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -798,7 +799,8 @@ export function VideoPlayer() {
     if (source?.kind !== 'youtube' || !source.videoId || !youtubeContainerRef.current || !currentItem) return;
     let active = true;
     const itemAtStart = currentItem;
-    const resumeAt = watchProgress[itemAtStart.id]?.position || 0;
+    const rootKey = journeyKey(itemAtStart);
+    const resumeAt = watchProgress[itemAtStart.id]?.position ?? watchProgress[rootKey]?.position ?? 0;
 
     loadYouTubeApi().then((YT) => {
       if (!active || !youtubeContainerRef.current) return;

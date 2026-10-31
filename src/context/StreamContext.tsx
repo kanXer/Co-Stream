@@ -146,27 +146,75 @@ function shuffled<T>(input: T[]) {
   return output;
 }
 
-function journeyKey(item: MediaItem) {
-  if (item.mediaType === 'tv') {
-    const seriesId = item.providerId || item.id.replace(/-s\d+e\d+$/i, '');
-    return `tv:${seriesId}`;
+export function extractCleanSeriesTitle(title: string): string {
+  return title.replace(/\s*•\s*S\d+\s*E\d+.*$/i, '').trim();
+}
+
+export function journeyKey(item: {
+  id?: string;
+  providerId?: string;
+  catalogId?: number;
+  title?: string;
+  mediaType?: string;
+}): string {
+  const isTv = item.mediaType === 'tv';
+
+  if (item.catalogId) {
+    return `${isTv ? 'tv' : 'movie'}:${item.catalogId}`;
   }
-  return `movie:${item.id}`;
+
+  const combined = `${item.providerId || ''} ${item.id || ''}`;
+  const tmdbMatch = combined.match(/(?:tmdb:)?(?:movie|tv)?:?(\d+)/i);
+  if (tmdbMatch) {
+    return `${isTv ? 'tv' : 'movie'}:${tmdbMatch[1]}`;
+  }
+
+  const cleanTitle = extractCleanSeriesTitle(item.title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  if (cleanTitle) {
+    return `${isTv ? 'tv' : 'movie'}:${cleanTitle}`;
+  }
+
+  const raw = (item.providerId || item.id || '')
+    .replace(/^netmirror-/i, '')
+    .replace(/-s\d+e\d+$/i, '')
+    .toLowerCase()
+    .trim();
+  return `${isTv ? 'tv' : 'movie'}:${raw}`;
 }
 
-function compactRecentItems(items: MediaItem[]) {
+function normalizeRecentItem(item: MediaItem): MediaItem {
+  if (item.mediaType === 'tv') {
+    const cleanTitle = extractCleanSeriesTitle(item.title);
+    return {
+      ...item,
+      title: cleanTitle || item.title,
+      selectedSeason: item.selectedSeason || 1,
+      selectedEpisode: item.selectedEpisode || 1,
+    };
+  }
+  return { ...item };
+}
+
+function compactRecentItems(items: MediaItem[]): MediaItem[] {
   const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = journeyKey(item);
-    if (seen.has(key)) return false;
+  const result: MediaItem[] = [];
+  for (const raw of items) {
+    const key = journeyKey(raw);
+    if (seen.has(key)) continue;
     seen.add(key);
-    return true;
-  }).slice(0, 60);
+    result.push(normalizeRecentItem(raw));
+    if (result.length >= 60) break;
+  }
+  return result;
 }
 
-function putRecentItem(items: MediaItem[], item: MediaItem) {
+function putRecentItem(items: MediaItem[], item: MediaItem): MediaItem[] {
   const key = journeyKey(item);
-  return [item, ...items.filter((entry) => journeyKey(entry) !== key)].slice(0, 60);
+  const normalized = normalizeRecentItem(item);
+  const filtered = items.filter((entry) => journeyKey(entry) !== key);
+  return [normalized, ...filtered].slice(0, 60);
 }
 
 export function StreamProvider({ children }: { children: React.ReactNode }) {
@@ -497,17 +545,34 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
 
   const updateWatchProgress = useCallback((itemId: string, position: number, total: number) => {
     if (!Number.isFinite(position) || !Number.isFinite(total) || total <= 0) return;
+    const current = currentRef.current;
+    const rootKey = current ? journeyKey(current) : null;
+
     setWatchProgress((progress) => {
       const next = {
         ...progress,
         [itemId]: { position, duration: total, updatedAt: Date.now() },
       };
+      if (rootKey) {
+        next[rootKey] = { position, duration: total, updatedAt: Date.now() };
+      }
+      if (current?.id && current.id !== itemId) {
+        next[current.id] = { position, duration: total, updatedAt: Date.now() };
+      }
       if (Date.now() - lastProgressSaveRef.current > 4000 || position >= total - 2) {
         saveJson('co_progress', next);
         lastProgressSaveRef.current = Date.now();
       }
       return next;
     });
+
+    if (current && (Date.now() - lastProgressSaveRef.current > 4000 || position >= total - 2)) {
+      setRecentItems((items) => {
+        const next = putRecentItem(items, current);
+        saveJson('co_recent', next);
+        return next;
+      });
+    }
   }, []);
 
   const addSearchHistory = (term: string) => {

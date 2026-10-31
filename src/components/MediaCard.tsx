@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import { Bookmark, Film, Play, Star } from 'lucide-react';
-import { useStream } from '@/context/StreamContext';
+import { useStream, journeyKey } from '@/context/StreamContext';
 import { prefetchNetMirrorPlayback } from '@/lib/playbackClient';
 import type { MediaItem } from '@/types';
 
@@ -20,7 +20,8 @@ export function MediaCard({
 }) {
   const { isWatchlisted, toggleWatchlist, watchProgress } = useStream();
   const saved = isWatchlisted(item.id);
-  const progress = watchProgress[item.id];
+  const key = journeyKey(item);
+  const progress = watchProgress[item.id] || watchProgress[key];
   const progressPercent = progress?.duration ? Math.min(100, (progress.position / progress.duration) * 100) : 0;
 
   return (
@@ -45,7 +46,9 @@ export function MediaCard({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/10 opacity-80" />
           <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 rounded-lg bg-black/60 backdrop-blur-md px-2 py-1 text-[9px] font-black uppercase tracking-wide text-white">
-            {item.mediaType === 'tv' ? 'Series' : 'Movie'}
+            {item.mediaType === 'tv'
+              ? (item.selectedSeason ? `S${item.selectedSeason} E${item.selectedEpisode || 1}` : 'Series')
+              : 'Movie'}
           </span>
           {rank !== undefined && (
             <span className="absolute bottom-1 left-1 text-[56px] leading-none font-black tracking-[-0.08em] text-white drop-shadow-[0_4px_0_rgba(0,0,0,.55)]">{rank}</span>
@@ -72,7 +75,13 @@ export function MediaCard({
       <button onClick={() => onOpen(item)} className="block text-left w-full mt-2.5">
         <h3 className="text-[13px] font-black truncate group-hover:text-[var(--accent)] transition-colors">{item.title}</h3>
         <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-[var(--text-muted)] truncate">
-          <span>{item.year}</span>
+          {item.mediaType === 'tv' && item.selectedSeason ? (
+            <span className="text-[#7fffd2] font-bold">
+              S{item.selectedSeason} · E{item.selectedEpisode || 1}
+            </span>
+          ) : (
+            <span>{item.year}</span>
+          )}
           {item.rating > 0 && <><span>•</span><Star size={10} className="text-amber-500 fill-amber-500" /><span>{item.rating.toFixed(1)}</span></>}
         </p>
       </button>
@@ -90,7 +99,11 @@ export function MediaRow({ item, onOpen, onPlay }: { item: MediaItem; onOpen: ()
       </div>
       <div className="min-w-0 flex-1">
         <h4 className="text-sm font-black truncate">{item.title}</h4>
-        <p className="text-[11px] text-[var(--text-muted)] truncate mt-1">{item.year} • {item.genres.slice(0, 2).join(', ') || (item.mediaType === 'tv' ? 'Series' : 'Movie')}</p>
+        <p className="text-[11px] text-[var(--text-muted)] truncate mt-1">
+          {item.mediaType === 'tv' && item.selectedSeason
+            ? `S${item.selectedSeason} E${item.selectedEpisode || 1}`
+            : item.year} • {item.genres.slice(0, 2).join(', ') || (item.mediaType === 'tv' ? 'Series' : 'Movie')}
+        </p>
         {item.rating > 0 && <p className="text-[10px] text-amber-500 font-bold mt-1">★ {item.rating.toFixed(1)}</p>}
       </div>
       <button onClick={(event) => { event.stopPropagation(); toggleWatchlist(item); }} className={`icon-button ${saved ? '!text-[var(--accent)]' : ''}`}><Bookmark size={17} className={saved ? 'fill-current' : ''} /></button>
