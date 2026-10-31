@@ -259,6 +259,24 @@ export function VideoPlayer() {
     setPipSupported(typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled);
   }, []);
 
+  useEffect(() => {
+    if (!isExpanded) return;
+    if (typeof window !== 'undefined' && !window.history.state?.costreamPlayer) {
+      window.history.pushState({ costreamPlayer: true }, '');
+    }
+
+    const onPopState = () => {
+      if (source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
+      setIsExpanded(false);
+      closePlayer();
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [isExpanded, source, closePlayer, setIsExpanded]);
+
   const releaseHeldSeek = (video: HTMLVideoElement) => {
     if (!seekHoldRef.current.active) return;
     const resume = seekHoldRef.current.resume;
@@ -1220,8 +1238,12 @@ export function VideoPlayer() {
 
   const minimize = () => {
     if (source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
-    setIsExpanded(false);
-    closePlayer();
+    if (typeof window !== 'undefined' && window.history.state?.costreamPlayer) {
+      window.history.back();
+    } else {
+      setIsExpanded(false);
+      closePlayer();
+    }
   };
 
   const contextSubtitle = [

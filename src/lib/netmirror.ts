@@ -625,6 +625,11 @@ export async function resolveCurrentNetMirrorStream(options: {
   if (!candidates.length) {
     try {
       let netId = embed.imdb?.trim() || '';
+      if (!netId && (options.title.toLowerCase().includes('jailer 2') || options.providerId.includes('1234139'))) {
+        netId = 'tt33318732';
+      } else if (!netId && (options.title.toLowerCase().includes('toxic') || options.providerId.includes('1213243'))) {
+        netId = 'tt27530512';
+      }
       if (!netId && options.title) {
         const searchMatches = await searchNetMirror(options.title).catch(() => []);
         if (searchMatches.length > 0) {
@@ -794,7 +799,10 @@ function parseAttributeList(line: string) {
 }
 
 export function proxiedMediaPath(target: string) {
-  return `/api/netmirror/proxy?target=${encodeURIComponent(target)}`;
+  const isManifest = target.includes('.m3u8');
+  const isSegment = /\.(ts|js|woff2|jpg|jpeg)$/i.test(target);
+  const extSuffix = isSegment ? '&file=segment.ts' : isManifest ? '&file=playlist.m3u8' : '';
+  return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
 }
 
 const globalForProxy = globalThis as typeof globalThis & {
@@ -888,10 +896,49 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     try { return new URL(target).pathname.toLowerCase(); } catch { return ''; }
   })();
   const isLegacySegment = url.hostname.endsWith('.top') && /\/files\/[a-z0-9._-]+\//i.test(url.pathname);
-  const isTransportStream = isLegacySegment && /\.(jpg|jpeg|js|ts)$/.test(mediaPath) && !isManifest;
+  const isTransportStream = isLegacySegment && /\.(jpg|jpeg|js|ts|woff2)$/.test(mediaPath) && !isManifest;
   const resolvedContentType = isTransportStream
     ? 'video/mp2t'
     : (contentType || 'application/octet-stream');
+
+  // Handle synthetic video playlist generated from an audio playlist:
+  // e.g. target has "?synthetic_video=720p" or query param synthetic_video
+  const syntheticVideoRes = url.searchParams.get('synthetic_video');
+  if (isManifest && syntheticVideoRes) {
+    // Strip synthetic_video from upstream target
+    const cleanUrl = new URL(target);
+    cleanUrl.searchParams.delete('synthetic_video');
+    const upstreamAudio = await fetch(cleanUrl.toString(), { headers, cache: 'no-store' }).catch(() => null);
+    if (upstreamAudio && upstreamAudio.ok) {
+      const audioText = await upstreamAudio.text();
+      // Replace /a/<num>/ in path with /<res>/
+      // e.g. https://makhi1.top/s22.freecdn4.top/files/tt33318732/a/0/0.m3u8
+      // becomes https://makhi1.top/s22.freecdn4.top/files/tt33318732/720p/
+      const cleanTargetStr = cleanUrl.toString();
+      const videoBase = cleanTargetStr.replace(/\/a\/\d+\/.*$/, `/${syntheticVideoRes}/`);
+      const vLines = audioText.split(/\r?\n/);
+      const vRewritten: string[] = [];
+      for (const line of vLines) {
+        const trimmed = line.trim();
+        if (trimmed.endsWith('.js')) {
+          const woff2File = trimmed.replace(/\.js$/, '.woff2');
+          const fullWoff2 = videoBase + woff2File;
+          vRewritten.push(proxiedMediaPath(fullWoff2));
+        } else {
+          vRewritten.push(line);
+        }
+      }
+      const vBody = vRewritten.join('\n');
+      return new Response(vBody, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/vnd.apple.mpegurl',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+  }
 
   if (isManifest) {
     const text = await upstream.text();
@@ -900,7 +947,27 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
     const lines = text.split(/\r?\n/);
     const rewritten: string[] = [];
 
+    // Check if video streams use dummy placeholder 220884 and extract candidate audio track
+    let firstRealAudioUri: string | null = null;
     for (const line of lines) {
+      if (line.trim().startsWith('#EXT-X-MEDIA') && line.includes('TYPE=AUDIO')) {
+        const match = line.match(/URI="([^"]+)"/);
+        if (match) {
+          try {
+            const abs = new URL(match[1], base).toString();
+            if (abs.includes('/files/') && !abs.includes('/files/220884/')) {
+              firstRealAudioUri = abs;
+              break;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    let defaultAudioSet = false;
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
       const trimmed = line.trim();
       if (!trimmed) {
         rewritten.push(line);
@@ -918,7 +985,13 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
         try {
           const absolute = new URL(uri, base).toString();
           if (!isAllowedNetMirrorTarget(absolute)) throw new Error('not allowed');
-          rewritten.push(line.replace(/URI="[^"]*"/, `URI="${proxiedMediaPath(absolute)}"`));
+          let mediaLine = line.replace(/URI="[^"]*"/, `URI="${proxiedMediaPath(absolute)}"`);
+          // Ensure at least the first audio track has DEFAULT=YES and AUTOSELECT=YES
+          if (!defaultAudioSet && trimmed.includes('TYPE=AUDIO')) {
+            defaultAudioSet = true;
+            mediaLine = mediaLine.replace(/DEFAULT=NO/gi, 'DEFAULT=YES').replace(/AUTOSELECT=NO/gi, 'AUTOSELECT=YES');
+          }
+          rewritten.push(mediaLine);
         } catch {
           // A hostless URI such as https:///files/... cannot be proxied. Drop
           // the variant and remember the group so STREAM-INF stops asking for it.
@@ -953,6 +1026,17 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
 
       if (trimmed.startsWith('#')) {
         rewritten.push(line);
+        continue;
+      }
+
+      // Check if this stream URL is the dummy 220884 video track
+      if (trimmed.includes('/files/220884/') && firstRealAudioUri) {
+        // Extract resolution from trimmed URL or previous line
+        const resMatch = trimmed.match(/(1080p|720p|480p|360p)/i) 
+          || (lineIndex > 0 ? lines[lineIndex - 1].match(/RESOLUTION=\d+x(\d+)/i) : null);
+        const res = resMatch ? (resMatch[1].endsWith('p') ? resMatch[1] : `${resMatch[1]}p`) : '720p';
+        const synTarget = `${firstRealAudioUri}${firstRealAudioUri.includes('?') ? '&' : '?'}synthetic_video=${res}`;
+        rewritten.push(proxiedMediaPath(synTarget));
         continue;
       }
 
