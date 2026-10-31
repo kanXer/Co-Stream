@@ -229,6 +229,7 @@ export function VideoPlayer() {
   const [pipSupported, setPipSupported] = useState(false);
   const [scrubbingTime, setScrubbingTime] = useState<number | null>(null);
   const [hlsLevels, setHlsLevels] = useState<Array<{ id: number; label: string; height: number }>>([]);
+  const [hlsAudioTracks, setHlsAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -670,6 +671,21 @@ export function VideoPlayer() {
         } else {
           setHlsLevels([]);
         }
+
+        const rawAudio = hlsInstance?.audioTracks || [];
+        if (rawAudio.length > 1) {
+          setHlsAudioTracks(rawAudio.map((track, index) => ({
+            id: index,
+            label: track.name || track.lang || `Track ${index + 1}`,
+          })));
+          const defIdx = rawAudio.findIndex((t) => t.default);
+          const activeTrack = defIdx >= 0 ? rawAudio[defIdx] : rawAudio[0];
+          if (activeTrack) {
+            setSelectedAudio(activeTrack.name || activeTrack.lang || 'Original');
+          }
+        } else {
+          setHlsAudioTracks([]);
+        }
       });
       // Recovery: on non-fatal errors try to recover; on fatal errors report.
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
@@ -798,6 +814,7 @@ export function VideoPlayer() {
       video.pause();
       hlsRef.current = null;
       setHlsLevels([]);
+      setHlsAudioTracks([]);
       hlsInstance?.destroy();
       registerController(null);
     };
@@ -1928,24 +1945,46 @@ export function VideoPlayer() {
                         )}
 
                         {/* Section: Audio */}
-                        {source?.audioTracks && source.audioTracks.length > 0 && (
+                        {((source?.audioTracks && source.audioTracks.length > 0) || hlsAudioTracks.length > 0) && (
                           <div className="mb-3">
                             <p className="text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1.5 px-1">Audio</p>
                             <div className="space-y-1">
-                              {source.audioTracks.map((track) => (
-                                <button
-                                  key={track.id}
-                                  onClick={() => void chooseAudio(track.resolveUrl)}
-                                  className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
-                                    selectedAudio === track.label
-                                      ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
-                                      : 'hover:bg-white/10 text-white/80'
-                                  }`}
-                                >
-                                  <span>{track.label}</span>
-                                  {selectedAudio === track.label && <Check size={14} className="text-[#7fffd2]" />}
-                                </button>
-                              ))}
+                              {hlsAudioTracks.length > 0 ? (
+                                hlsAudioTracks.map((track) => (
+                                  <button
+                                    key={track.id}
+                                    onClick={() => {
+                                      if (hlsRef.current) {
+                                        hlsRef.current.audioTrack = track.id;
+                                        setSelectedAudio(track.label);
+                                      }
+                                    }}
+                                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                                      selectedAudio === track.label
+                                        ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
+                                        : 'hover:bg-white/10 text-white/80'
+                                    }`}
+                                  >
+                                    <span>{track.label}</span>
+                                    {selectedAudio === track.label && <Check size={14} className="text-[#7fffd2]" />}
+                                  </button>
+                                ))
+                              ) : (
+                                source?.audioTracks?.map((track) => (
+                                  <button
+                                    key={track.id}
+                                    onClick={() => void chooseAudio(track.resolveUrl)}
+                                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                                      selectedAudio === track.label
+                                        ? 'bg-[#7fffd2]/15 text-[#7fffd2]'
+                                        : 'hover:bg-white/10 text-white/80'
+                                    }`}
+                                  >
+                                    <span>{track.label}</span>
+                                    {selectedAudio === track.label && <Check size={14} className="text-[#7fffd2]" />}
+                                  </button>
+                                ))
+                              )}
                             </div>
                           </div>
                         )}

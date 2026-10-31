@@ -92,16 +92,12 @@ function uniqueCatalogItems(items: NetMirrorCatalogItem[]) {
 // Titles and IDs known to appear in catalogs but have no playable stream on NetMirror.
 const NON_STREAMABLE_TMDB_IDS = new Set<number>([
   15226,    // C.I.D. (1998 TV Series)
-  1234139,  // Jailer 2 (unreleased trailer placeholder)
-  1213243,  // Toxic (unreleased trailer placeholder)
 ]);
 
 export function isNonStreamableItem(item: { tmdbId?: number | string; title?: string }): boolean {
   if (item.tmdbId && NON_STREAMABLE_TMDB_IDS.has(Number(item.tmdbId))) return true;
   if (!item.title) return false;
   const t = item.title.trim().toLowerCase();
-  if (t === 'jailer 2' || t.startsWith('jailer 2') || t.includes('jailer 2')) return true;
-  if (t === 'toxic' || t.startsWith('toxic:')) return true;
   const clean = t.replace(/[^a-z0-9]/g, '');
   if (clean === 'cid' || clean.startsWith('cid')) return true;
   if (/\b(c\.?\s*i\.?\s*d\.?)\b/i.test(t)) return true;
@@ -202,20 +198,20 @@ type HindiTitleDef = {
 };
 
 const HINDI_SPOTLIGHT_FALLBACK: HindiTitleDef[] = [
-  { tmdbId: 937020,  title: 'Jailer',                 year: '2023', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 7.5, overview: 'A retired jailer goes on a manhunt to find his son’s killers, unleashing his ruthless past.' },
+  { tmdbId: 1234139, title: 'Jailer 2',               year: '2026', poster: 'https://image.tmdb.org/t/p/w780/upwdEyhhYZ7pT2hD535fr2MGfpx.jpg', rating: 8.0, overview: "When a dangerous syndicate expands its reach to threaten his family's peace, retired jailer Tiger Muthuvel Pandian goes undercover as a driver. Operating from the shadows, he takes on ruthless new enemies to protect his home." },
+  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/5RTd3YCLWbEhbe9OXRuNX3pbT5U.jpg', rating: 8.0, overview: 'A fairy tale for grown-ups set against the backdrop of the drug mafia.' },
+  { tmdbId: 1109086, title: 'War 2',                  year: '2025', poster: 'https://image.tmdb.org/t/p/w780/pKIRUTnwY3YYU9urSdsuobdcliP.jpg', rating: 7.5, overview: 'Hrithik Roshan and Jr NTR clash in the sixth instalment of the YRF Spy Universe.' },
+  { tmdbId: 857598,  title: 'Pushpa 2 - The Rule',    year: '2024', poster: 'https://image.tmdb.org/t/p/w185/1T21FblunT0y8fz7YaW8JMYgUKm.jpg', rating: 6.8, overview: 'Pushpa Raj expands his empire while confronting old rivals and new adversaries.' },
   { tmdbId: 781732,  title: 'Animal',                 year: '2023', poster: 'https://image.tmdb.org/t/p/w780/hr9rjR3J0xBBKmlJ4n3gHId9ccx.jpg', rating: 7.5, overview: 'A son’s obsessive love for his father triggers a brutal path of bloody vengeance.' },
   { tmdbId: 872906,  title: 'Jawan',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w780/jFt1gS4BGHlK8xt76Y81Alp4dbt.jpg', rating: 7.6, overview: 'A prison warden driven by personal vengeance recruits inmates to right societal wrongs.' },
   { tmdbId: 587412,  title: 'K.G.F: Chapter 2',       year: '2022', poster: 'https://image.tmdb.org/t/p/w780/khNVygolU0TxLIDWff5tQlAhZ23.jpg', rating: 7.7, overview: 'Rocky asserts his supremacy over KGF while dealing with adversaries and government forces.' },
   { tmdbId: 1196943, title: 'Chhaava',                year: '2025', poster: 'https://image.tmdb.org/t/p/w185/ubRsrzb6NRW8YhVTJ6jG1kpNvCi.jpg', rating: 7.2, overview: 'Shivaji’s death sparks the Maratha-Mughal conflict as his son Sambhaji leads the resistance.' },
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5, overview: 'An ex-cop living under an alias steps back into violence to protect his young daughter.' },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5, overview: 'Salman Khan stars in this high-voltage action drama directed by AR Murugadoss.' },
-  { tmdbId: 857598,  title: 'Pushpa 2 - The Rule',    year: '2024', poster: 'https://image.tmdb.org/t/p/w185/1T21FblunT0y8fz7YaW8JMYgUKm.jpg', rating: 6.8, overview: 'Pushpa Raj expands his empire while confronting old rivals and new adversaries.' },
   { tmdbId: 801688,  title: 'Kalki 2898-AD',          year: '2024', poster: 'https://image.tmdb.org/t/p/w185/rstcAnBeCkxNQjNp3YXrF6IP1tW.jpg', rating: 7.1, overview: 'A modern avatar of Vishnu descends to protect the world from evil forces in a dystopian future.' },
   { tmdbId: 1112426, title: 'Stree 2',                year: '2024', poster: 'https://image.tmdb.org/t/p/w185/nfnhwfUEFuSOxxf4jDdBlY6Lccw.jpg', rating: 7.3, overview: 'Chanderi is haunted once more, this time by a terrifying headless entity abducting women.' },
   { tmdbId: 1014214, title: 'Singham Again',          year: '2024', poster: 'https://image.tmdb.org/t/p/w185/2JbNkHg8m7LaBy61LyrnnlenaxY.jpg', rating: 6.2, overview: 'Bajirao Singham gathers his cop universe allies on a high-stakes rescue mission.' },
   { tmdbId: 980599,  title: 'Bhool Bhulaiyaa 3',      year: '2024', poster: 'https://image.tmdb.org/t/p/w185/3AfHD1HoaQpQwKH8kxRdBKVmzeU.jpg', rating: 6.0, overview: 'Rooh Baba ventures into a haunted mansion in Bengal, confronting two vengeful spirits.' },
-  { tmdbId: 781732,  title: 'Animal',                 year: '2023', poster: 'https://image.tmdb.org/t/p/w185/hr9rjR3J0xBBKmlJ4n3gHId9ccx.jpg', rating: 6.8, overview: 'A son’s obsessive love for his father triggers a brutal path of bloody vengeance.' },
-  { tmdbId: 872906,  title: 'Jawan',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/jFt1gS4BGHlK8xt76Y81Alp4dbt.jpg', rating: 7.1, overview: 'A prison warden driven by personal vengeance recruits inmates to right societal wrongs.' },
   { tmdbId: 864692,  title: 'Pathaan',                year: '2023', poster: 'https://image.tmdb.org/t/p/w185/arf00BkwvXo0CFKbaD9OpqdE4Nu.jpg', rating: 6.6, overview: 'An exiled RAW field operative returns to stop a rogue mercenary group from destroying India.' },
   { tmdbId: 960876,  title: 'Dunki',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kPRb1mbVHGop0egQ7153y0lhzGL.jpg', rating: 6.8, overview: 'Four friends from Punjab embark on a daring donkey flight journey to England.' },
   { tmdbId: 885331,  title: 'Gadar 2',                year: '2023', poster: 'https://image.tmdb.org/t/p/w185/brCBYKGQaxZZcwmFF6OIxZLdKVU.jpg', rating: 6.2, overview: 'Tara Singh crosses the border into Pakistan once again to rescue his captured son.' },
@@ -223,9 +219,7 @@ const HINDI_SPOTLIGHT_FALLBACK: HindiTitleDef[] = [
   { tmdbId: 1029827, title: 'Drishyam 2',             year: '2022', poster: 'https://image.tmdb.org/t/p/w185/wk8Vu0DI0MiNLaXXiVqAwjLRKL5.jpg', rating: 8.1, overview: 'Seven years later, new revelations threaten to tear Vijay Salgaonkar’s family apart.' },
   { tmdbId: 1163258, title: '12th Fail',              year: '2023', poster: 'https://image.tmdb.org/t/p/w185/eebUPRI4Z5e1Z7Hev4JZAwMIFkX.jpg', rating: 8.3, overview: 'The inspiring real-life journey of IPS officer Manoj Kumar Sharma overcoming all odds.' },
   { tmdbId: 579974,  title: 'RRR',                    year: '2022', poster: 'https://image.tmdb.org/t/p/w185/wE0I6efAW4cDDmZQWtwZMOW44EJ.jpg', rating: 7.9, overview: 'A legendary tale of two revolutionaries fighting against British colonial rule in the 1920s.' },
-  { tmdbId: 587412,  title: 'K.G.F: Chapter 2',       year: '2022', poster: 'https://image.tmdb.org/t/p/w185/khNVygolU0TxLIDWff5tQlAhZ23.jpg', rating: 7.7, overview: 'Rocky asserts his supremacy over KGF while dealing with adversaries and government forces.' },
   { tmdbId: 496331,  title: 'Brahmāstra Part One',    year: '2022', poster: 'https://image.tmdb.org/t/p/w185/x61qdvHIsr9U53FwoLVDQqAGur0.jpg', rating: 6.5, overview: 'Shiva discovers his extraordinary destiny and power over fire connected to the divine weapon.' },
-  { tmdbId: 1109086, title: 'War 2',                  year: '2025', poster: 'https://image.tmdb.org/t/p/w780/pKIRUTnwY3YYU9urSdsuobdcliP.jpg', rating: 7.5, overview: 'Hrithik Roshan and Jr NTR clash in the sixth instalment of the YRF Spy Universe.' },
 ];
 
 function hindiDefToCatalogItem(def: HindiTitleDef, type: 'movie' | 'tv' = 'movie'): NetMirrorCatalogItem {
@@ -242,6 +236,8 @@ function hindiDefToCatalogItem(def: HindiTitleDef, type: 'movie' | 'tv' = 'movie
 }
 
 const CURATED_HINDI_LATEST: HindiTitleDef[] = [
+  { tmdbId: 1234139, title: 'Jailer 2',               year: '2026', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 8.0 },
+  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w185/5RTd3YCLWbEhbe9OXRuNX3pbT5U.jpg', rating: 8.0 },
   { tmdbId: 1196943, title: 'Chhaava',                year: '2025', poster: 'https://image.tmdb.org/t/p/w185/ubRsrzb6NRW8YhVTJ6jG1kpNvCi.jpg', rating: 7.2 },
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5 },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5 },

@@ -34,82 +34,27 @@ export async function GET(request: Request) {
     return Response.json({ error: 'A valid NetMirror title id is required.' }, { status: 400 });
   }
 
-  let targetId = id;
-  let targetTitle = title;
-  let targetYear = year;
-  // If unreleased Jailer 2 is requested, map to Rajinikanth's blockbuster Jailer (2023, TMDB 937020) so the full movie streams
-  if (targetId.includes('1234139') || /jailer\s*2/i.test(targetTitle)) {
-    targetId = 'tmdb:movie:937020';
-    targetTitle = 'Jailer';
-    targetYear = '2023';
+  let resolved: Awaited<ReturnType<typeof resolveCurrentNetMirrorStream>> | null = null;
+  try {
+    resolved = await resolveCurrentNetMirrorStream({
+      providerId: id,
+      title,
+      type: mediaType,
+      year,
+      season,
+      episode,
+      audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
+      audioDetailPath: audioPath || undefined,
+    });
+  } catch (streamError) {
+    console.warn(`NetMirror stream resolution failed for "${title}":`, streamError);
   }
-  // If unreleased Toxic is requested, map to Yash's blockbuster K.G.F: Chapter 2 (TMDB 587412) so the full movie streams
-  if (targetId.includes('1213243') || /\btoxic\b/i.test(targetTitle)) {
-    targetId = 'tmdb:movie:587412';
-    targetTitle = 'K.G.F: Chapter 2';
-    targetYear = '2022';
+
+  if (!resolved) {
+    return Response.json({ error: `"${title}" is not yet available to stream on NetMirror.` }, { status: 404 });
   }
 
   try {
-    let resolved: Awaited<ReturnType<typeof resolveCurrentNetMirrorStream>> | null = null;
-    try {
-      resolved = await resolveCurrentNetMirrorStream({
-        providerId: targetId,
-        title: targetTitle,
-        type: mediaType,
-        year: targetYear,
-        season,
-        episode,
-        audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
-        audioDetailPath: audioPath || undefined,
-      });
-    } catch {
-      // NetMirror stream unavailable - will fallback to trailer
-    }
-
-    if (!resolved) {
-      const fallbackTmdbId = Number(targetId.match(/\d+/)?.[0]) || 0;
-      const metadata = fallbackTmdbId ? await getCurrentNetMirrorTitle(fallbackTmdbId, mediaType).catch(() => null) : null;
-      const trailerKey = metadata?.trailerKey || null;
-
-      if (!trailerKey) {
-        return Response.json({ error: `"${title}" is not yet available to stream on NetMirror.` }, { status: 404 });
-      }
-
-      const playback: PlaybackSource = {
-        kind: 'youtube',
-        label: 'Official Trailer',
-        url: `https://www.youtube.com/watch?v=${trailerKey}`,
-        videoId: trailerKey,
-        downloadable: false,
-        resolvedAt: Date.now(),
-        selectedQuality: '1080p',
-        selectedAudio: 'Original',
-        qualities: [{ label: 'Trailer', url: `https://www.youtube.com/watch?v=${trailerKey}` }],
-        subtitles: [],
-        audioTracks: [],
-      };
-
-      const details: MediaDetails = {
-        id: `netmirror-${id}`,
-        providerId: id,
-        mediaType,
-        title: metadata?.title || title,
-        overview: metadata?.overview || 'Official announcement trailer now streaming on Co-Stream.',
-        year: metadata?.year || year || '2026',
-        rating: metadata?.rating || 8.0,
-        posterUrl: metadata?.poster ? proxiedMediaPath(metadata.poster) : null,
-        backdropUrl: metadata?.backdrop ? proxiedMediaPath(metadata.backdrop) : null,
-        genres: (metadata?.genres || []).map((genre) => genre.name || '').filter(Boolean),
-        durationSeconds: (metadata?.runtime || 0) * 60,
-        language: metadata?.originalLanguage || 'hi',
-        catalogId: fallbackTmdbId,
-        playback,
-        related: [],
-      };
-
-      return Response.json(details, { headers: PLAYBACK_CACHE_HEADERS });
-    }
     const variants = await getCurrentNetMirrorVariants(resolved.tmdbId, resolved.type, season, episode).catch(() => null);
     const downloadStream = resolved.streams.find((stream) => stream.resolution === '360p')
       || resolved.streams.find((stream) => stream.resolution === '480p')
