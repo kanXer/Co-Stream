@@ -49,6 +49,7 @@ type YouTubePlayer = {
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   getCurrentTime: () => number;
   getDuration: () => number;
+  getPlayerState?: () => number;
   setVolume: (volume: number) => void;
   destroy: () => void;
 };
@@ -681,7 +682,7 @@ export function VideoPlayer() {
       video.playbackRate = playbackSpeed;
       reportPlayback({ isPlaying: true, isLoading: false, error: null });
     };
-    const onPause = () => reportPlayback({ isPlaying: false });
+    const onPause = () => reportPlayback({ isPlaying: false, isLoading: false });
     const onWaiting = () => {
       if (seekHoldRef.current.active) return;
       reportPlayback({ isLoading: true });
@@ -784,35 +785,39 @@ export function VideoPlayer() {
           controls: 1,
           playsinline: 1,
           rel: 0,
+          enablejsapi: 1,
           modestbranding: 1,
-          origin: window.location.origin,
         },
         events: {
           onReady: ({ target }) => {
             if (!active) return;
-            target.setVolume(volume * 100);
-            if (resumeAt > 2) target.seekTo(resumeAt, true);
-            target.playVideo();
+            try {
+              target.setVolume(volume * 100);
+              if (resumeAt > 2) target.seekTo(resumeAt, true);
+              target.playVideo();
+            } catch {}
             reportPlayback({ isLoading: false, error: null });
           },
           onStateChange: ({ data, target }) => {
             if (!active) return;
             if (data === 1) reportPlayback({ isPlaying: true, isLoading: false });
-            if (data === 2) reportPlayback({ isPlaying: false });
+            if (data === 2) reportPlayback({ isPlaying: false, isLoading: false });
             if (data === 3) reportPlayback({ isLoading: true });
             if (data === 0) handleEnded();
-            const total = target.getDuration() || itemAtStart.durationSeconds;
-            if (total) reportPlayback({ duration: total });
+            try {
+              const total = target.getDuration() || itemAtStart.durationSeconds;
+              if (total) reportPlayback({ duration: total });
+            } catch {}
           },
           onError: () => reportPlayback({ isPlaying: false, isLoading: false, error: 'The official trailer is restricted from embedded playback.' }),
         },
       });
 
       const controller: PlaybackController = {
-        play: () => youtubePlayerRef.current?.playVideo(),
-        pause: () => youtubePlayerRef.current?.pauseVideo(),
-        seek: (seconds) => youtubePlayerRef.current?.seekTo(seconds, true),
-        setVolume: (nextVolume) => youtubePlayerRef.current?.setVolume(nextVolume * 100),
+        play: () => { try { youtubePlayerRef.current?.playVideo(); } catch {} },
+        pause: () => { try { youtubePlayerRef.current?.pauseVideo(); } catch {} },
+        seek: (seconds) => { try { youtubePlayerRef.current?.seekTo(seconds, true); } catch {} },
+        setVolume: (nextVolume) => { try { youtubePlayerRef.current?.setVolume(nextVolume * 100); } catch {} },
       };
       registerController(controller);
 
@@ -1052,22 +1057,34 @@ export function VideoPlayer() {
     if (video && source?.kind === 'direct') {
       if (video.paused) {
         setControlPulse('play');
-        video.play().catch(() => undefined);
-        reportPlayback({ isPlaying: true });
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
+            .catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+        } else {
+          reportPlayback({ isPlaying: true, isLoading: false });
+        }
       } else {
         setControlPulse('pause');
         video.pause();
-        reportPlayback({ isPlaying: false });
+        reportPlayback({ isPlaying: false, isLoading: false });
       }
     } else if (source?.kind === 'youtube' && youtubePlayerRef.current) {
-      if (isPlaying) {
-        setControlPulse('pause');
-        youtubePlayerRef.current.pauseVideo();
-        reportPlayback({ isPlaying: false });
-      } else {
-        setControlPulse('play');
-        youtubePlayerRef.current.playVideo();
-        reportPlayback({ isPlaying: true });
+      try {
+        const yt = youtubePlayerRef.current;
+        const state = typeof yt.getPlayerState === 'function' ? yt.getPlayerState() : (isPlaying ? 1 : 2);
+        if (state === 1) {
+          setControlPulse('pause');
+          yt.pauseVideo();
+          reportPlayback({ isPlaying: false, isLoading: false });
+        } else {
+          setControlPulse('play');
+          yt.playVideo();
+          reportPlayback({ isPlaying: true, isLoading: false });
+        }
+      } catch {
+        togglePlay();
       }
     } else {
       togglePlay();
@@ -1379,14 +1396,57 @@ export function VideoPlayer() {
   };
 
   const minimize = () => {
-    if (source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
+    try {
+      if (source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
+    } catch {}
+    setIsExpanded(false);
+    closePlayer();
     if (typeof window !== 'undefined' && window.history.state?.costreamPlayer) {
-      window.history.back();
-    } else {
-      setIsExpanded(false);
-      closePlayer();
+      try {
+        window.history.back();
+      } catch {}
     }
   };
+
+  useEffect(() => {
+    if (!currentItem) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!isExpanded) {
+          setIsExpanded(true);
+          setTimeout(() => {
+            toggleFullscreen();
+          }, 60);
+        } else {
+          toggleFullscreen();
+        }
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        animatedTogglePlay();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        seekBy(-10);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        seekBy(10);
+      } else if (e.key === 'Escape' && isExpanded && !isBrowserFullscreen) {
+        e.preventDefault();
+        minimize();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentItem, isExpanded, isBrowserFullscreen, toggleFullscreen, animatedTogglePlay, seekBy, minimize, setIsExpanded]);
 
   const contextSubtitle = [
     isSeries && currentItem.selectedSeason ? `S${currentItem.selectedSeason} · E${currentItem.selectedEpisode || 1}` : null,
@@ -1491,7 +1551,10 @@ export function VideoPlayer() {
                       {/* Top-Left: Back + Title & Subtitle */}
                       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         <button
-                          onClick={minimize}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            minimize();
+                          }}
                           className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white backdrop-blur-md transition active:scale-95"
                           title="Minimize player"
                         >
@@ -1615,8 +1678,7 @@ export function VideoPlayer() {
                         className="pointer-events-auto relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 border border-white/15 text-white flex items-center justify-center backdrop-blur-md transition active:scale-90 shadow-2xl"
                         title="Rewind 10 seconds"
                       >
-                        <Rewind size={22} />
-                        <span className="absolute text-[8px] font-black -bottom-1">10</span>
+                        <Rewind size={24} />
                       </button>
 
                       <button
@@ -1647,8 +1709,7 @@ export function VideoPlayer() {
                         className="pointer-events-auto relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 border border-white/15 text-white flex items-center justify-center backdrop-blur-md transition active:scale-90 shadow-2xl"
                         title="Forward 10 seconds"
                       >
-                        <FastForward size={22} />
-                        <span className="absolute text-[8px] font-black -bottom-1">10</span>
+                        <FastForward size={24} />
                       </button>
                     </div>
 
@@ -2066,11 +2127,38 @@ export function VideoPlayer() {
                     <div className="min-w-0 pt-1"><p className="watch-accent text-[9px] uppercase tracking-[.18em] font-black">{source?.label || 'Co-Stream'}{selectedAudio !== 'Original' ? ` • ${selectedAudio}` : ''}</p><h2 className="text-lg font-black leading-tight mt-1 line-clamp-2">{currentItem.title}</h2><p className="watch-muted text-[11px] mt-1">{currentItem.year} • {currentItem.genres.slice(0, 2).join(' • ')}</p></div>
                   </div>
                   <p className="watch-muted mt-4 text-xs leading-6 line-clamp-5">{currentItem.overview}</p>
-                  <div className="grid grid-cols-4 gap-2 mt-4">
-                    <button onClick={() => toggleWatchlist(currentItem)} className={`player-action ${saved ? 'active' : ''}`}><Bookmark size={17} className={saved ? 'fill-current' : ''} /><span>Save</span></button>
-                    <div className="player-action"><OfflineButton item={currentItem} source={source} compact /><span>Offline</span></div>
-                    <button onClick={share} className="player-action"><Share2 size={17} /><span>Share</span></button>
-                    <button onClick={cycleThemeMode} className="player-action">{themeMode === 'DARK' ? <Sun size={17} /> : <Moon size={17} />}<span>Theme</span></button>
+                  <div className="grid grid-cols-4 gap-2.5 mt-4">
+                    <button
+                      onClick={() => toggleWatchlist(currentItem)}
+                      className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 backdrop-blur-2xl border ${
+                        saved
+                          ? 'bg-[#7fffd2]/20 text-[#7fffd2] border-[#7fffd2]/40 shadow-[0_4px_20px_rgba(127,255,210,0.2)]'
+                          : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)]'
+                      }`}
+                      title={saved ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                    >
+                      <Bookmark size={20} className={saved ? 'fill-current' : ''} />
+                    </button>
+                    <div
+                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
+                      title="Save offline"
+                    >
+                      <OfflineButton item={currentItem} source={source} compact />
+                    </div>
+                    <button
+                      onClick={share}
+                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
+                      title="Share title"
+                    >
+                      <Share2 size={20} />
+                    </button>
+                    <button
+                      onClick={cycleThemeMode}
+                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
+                      title="Toggle theme"
+                    >
+                      {themeMode === 'DARK' ? <Sun size={20} /> : <Moon size={20} />}
+                    </button>
                   </div>
                   {currentItem.mediaType !== 'tv' && (showQueue || queue.length > 1) && (
                     <div className="mt-5 pt-4 border-t border-[var(--line)]">
