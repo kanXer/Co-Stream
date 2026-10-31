@@ -373,7 +373,7 @@ export default function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                 <div className="relative z-10 min-h-[390px] sm:min-h-[440px] flex flex-col justify-end sm:justify-center p-6 sm:p-10 max-w-2xl text-white">
                   <p className="text-[10px] font-black uppercase tracking-[.18em] text-[#7fffd2]">
-                    {heroItem.year >= String(new Date().getFullYear()) ? '🔥 Coming Soon' : 'Latest Indian Cinema'}
+                    {heroItem.mediaType === 'tv' ? '🔥 Latest Series' : '🎬 Latest Release'}
                   </p>
                   <h2 className="text-4xl sm:text-6xl font-black tracking-[-.055em] leading-[.92] mt-3 text-balance">{heroItem.title}</h2>
                   <div className="flex items-center gap-2.5 mt-4 text-xs font-bold text-white/70"><span>{heroItem.year}</span>{heroItem.rating > 0 && <><span>•</span><span className="inline-flex items-center gap-1 text-amber-300"><Star size={12} className="fill-current" />{heroItem.rating.toFixed(1)}</span></>}<span>•</span><span>{heroItem.mediaType === 'tv' ? 'Series' : 'Movie'}</span></div>
