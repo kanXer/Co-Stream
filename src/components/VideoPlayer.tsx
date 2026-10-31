@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Download,
   EyeOff,
   FastForward,
   Languages,
@@ -38,7 +39,8 @@ import {
 } from 'lucide-react';
 import { useStream, journeyKey, type PlaybackController } from '@/context/StreamContext';
 import { OfflineButton } from '@/components/OfflineButton';
-import { getOfflinePlaybackUrl, isVideoDownloaded } from '@/lib/offlineStore';
+import { getOfflinePlaybackUrl, isVideoDownloaded, startVideoDownload } from '@/lib/offlineStore';
+import { useDownloadedIds, useDownloadState } from '@/lib/offlineHooks';
 import { resolveNetMirrorPlayback } from '@/lib/playbackClient';
 import Hls from 'hls.js';
 import type { MediaDetails, MediaEpisode, MediaItem, PlaybackSource } from '@/types';
@@ -230,6 +232,25 @@ export function VideoPlayer() {
   const [scrubbingTime, setScrubbingTime] = useState<number | null>(null);
   const [hlsLevels, setHlsLevels] = useState<Array<{ id: number; label: string; height: number }>>([]);
   const [hlsAudioTracks, setHlsAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
+
+  const downloadedIds = useDownloadedIds();
+  const downloadState = useDownloadState(currentItem?.id);
+  const isDownloaded = Boolean(currentItem && (downloadedIds.has(currentItem.id) || downloadState.status === 'downloaded'));
+  const isDownloading = downloadState.status === 'downloading';
+
+  const handleOfflineAction = () => {
+    if (!currentItem || isDownloaded || isDownloading) return;
+    const playback = source || currentItem.playback;
+    if (!playback) return;
+    const downloadablePlayback: PlaybackSource = {
+      ...playback,
+      kind: 'direct',
+      downloadable: true,
+      url: playback.downloadUrl || playback.url,
+      downloadUrl: playback.downloadUrl || playback.url,
+    };
+    void startVideoDownload(currentItem, downloadablePlayback);
+  };
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -2214,35 +2235,50 @@ export function VideoPlayer() {
                   <p className="watch-muted mt-4 text-xs leading-6 line-clamp-5">{currentItem.overview}</p>
                   <div className="grid grid-cols-4 gap-2.5 mt-4">
                     <button
+                      type="button"
                       onClick={() => toggleWatchlist(currentItem)}
-                      className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 backdrop-blur-2xl border ${
+                      className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border ${
                         saved
-                          ? 'bg-[#7fffd2]/20 text-[#7fffd2] border-[#7fffd2]/40 shadow-[0_4px_20px_rgba(127,255,210,0.2)]'
-                          : 'bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)]'
+                          ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
+                          : 'bg-white/10 hover:bg-white/15 text-white border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)]'
                       }`}
                       title={saved ? 'Remove from Watchlist' : 'Add to Watchlist'}
                     >
-                      <Bookmark size={20} className={saved ? 'fill-current' : ''} />
+                      <Bookmark size={20} strokeWidth={2.2} className={saved ? 'fill-current text-[#7fffd2]' : 'text-white'} />
                     </button>
-                    <div
-                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
-                      title="Save offline"
-                    >
-                      <OfflineButton item={currentItem} source={source} compact />
-                    </div>
                     <button
+                      type="button"
+                      onClick={handleOfflineAction}
+                      className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border ${
+                        isDownloaded
+                          ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
+                          : 'bg-white/10 hover:bg-white/15 text-white border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)]'
+                      }`}
+                      title={isDownloaded ? 'Saved offline' : isDownloading ? 'Downloading...' : 'Save offline'}
+                    >
+                      {isDownloaded ? (
+                        <Check size={20} strokeWidth={2.5} className="text-[#7fffd2]" />
+                      ) : isDownloading ? (
+                        <span className="w-5 h-5 rounded-full border-2 border-[#7fffd2] border-t-transparent animate-spin" />
+                      ) : (
+                        <Download size={20} strokeWidth={2.2} className="text-white" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
                       onClick={share}
-                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
+                      className="h-12 rounded-2xl flex items-center justify-center bg-white/10 hover:bg-white/15 text-white border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95"
                       title="Share title"
                     >
-                      <Share2 size={20} />
+                      <Share2 size={20} strokeWidth={2.2} className="text-white" />
                     </button>
                     <button
+                      type="button"
                       onClick={cycleThemeMode}
-                      className="h-12 rounded-2xl flex items-center justify-center bg-white/[0.08] hover:bg-white/[0.14] text-white/80 hover:text-white border border-white/15 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.18)] transition-all duration-200 active:scale-95"
+                      className="h-12 rounded-2xl flex items-center justify-center bg-white/10 hover:bg-white/15 text-white border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95"
                       title="Toggle theme"
                     >
-                      {themeMode === 'DARK' ? <Sun size={20} /> : <Moon size={20} />}
+                      {themeMode === 'DARK' ? <Sun size={20} strokeWidth={2.2} className="text-white" /> : <Moon size={20} strokeWidth={2.2} className="text-white" />}
                     </button>
                   </div>
 
@@ -2314,33 +2350,97 @@ export function VideoPlayer() {
 
       {/* ── Mini Player (Docked at Bottom) ───────────────────────── */}
       {!isExpanded && (
-        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-50 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:bottom-5 rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.3)] overflow-hidden">
+        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-[85] bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:bottom-5 rounded-2xl border border-white/15 bg-[#121c21]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.45)] overflow-hidden select-none">
           <div className="flex items-center gap-3 p-2.5">
-            <button onClick={() => setIsExpanded(true)} className="relative w-16 h-11 rounded-xl overflow-hidden bg-[var(--panel)] shrink-0">
-              {background ? <Image src={background} alt="" fill sizes="64px" className="object-cover" /> : <Play size={18} />}
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              className="relative w-16 h-11 rounded-xl overflow-hidden bg-black/40 shrink-0 cursor-pointer active:scale-95 transition"
+              title="Expand player"
+            >
+              {background ? <Image src={background} alt="" fill sizes="64px" className="object-cover" /> : <Play size={18} className="text-white/60 m-auto" />}
               <span className="absolute inset-0 bg-black/15" />
             </button>
-            <button onClick={() => setIsExpanded(true)} className="min-w-0 flex-1 text-left">
-              <h3 className="text-xs font-black truncate">{currentItem.title}</h3>
-              <p className={`text-[10px] truncate mt-0.5 ${playbackError ? 'text-red-500' : 'text-[var(--text-muted)]'}`}>{playbackError || (source?.kind === 'youtube' ? 'Official trailer • tap to resume' : isPlaying ? 'Playing now' : 'Paused')}</p>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(true)}
+              className="min-w-0 flex-1 text-left cursor-pointer"
+              title="Expand player"
+            >
+              <h3 className="text-xs font-black truncate text-white">{currentItem.title}</h3>
+              <p className={`text-[10px] truncate mt-0.5 ${playbackError ? 'text-red-400' : 'text-white/60'}`}>
+                {playbackError || (source?.kind === 'youtube' ? 'Official trailer • tap to resume' : isPlaying ? 'Playing now' : 'Paused')}
+              </p>
             </button>
             <button
-              onClick={() => source?.kind === 'youtube' ? setIsExpanded(true) : togglePlay()}
-              className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shrink-0"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (source?.kind === 'youtube') {
+                  setIsExpanded(true);
+                } else {
+                  animatedTogglePlay();
+                }
+              }}
+              className="w-10 h-10 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 shadow-md"
+              title={isPlaying ? "Pause" : "Play"}
             >
-              {isLoading ? <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" /> : isPlaying ? <Pause size={17} className="fill-current" /> : <Play size={17} className="fill-current ml-0.5" />}
+              {isLoading ? (
+                <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+              ) : isPlaying ? (
+                <Pause size={18} className="fill-current" />
+              ) : (
+                <Play size={18} className="fill-current ml-0.5" />
+              )}
             </button>
-            <button onClick={nextItem} className="icon-button"><SkipForward size={18} className="fill-current" /></button>
-            <button onClick={() => setIsExpanded(true)} className="icon-button hidden sm:flex"><Settings2 size={17} /></button>
-            <button onClick={() => setIsExpanded(true)} className="icon-button hidden sm:flex"><Maximize2 size={17} /></button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                nextItem();
+              }}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              title="Next video"
+            >
+              <SkipForward size={18} className="fill-current" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(true);
+              }}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              title="Expand player"
+            >
+              <Maximize2 size={17} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                closePlayer();
+              }}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              title="Close player"
+            >
+              <X size={17} />
+            </button>
           </div>
-          <div className="relative z-10 border-t border-[var(--line)] bg-[var(--panel)]/45 px-2.5 pb-2.5 pt-2">
-            <div className="h-1.5 rounded-full overflow-hidden bg-[var(--line)] relative cursor-pointer" onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-              seekDirectly((duration || 1) * percent);
-            }}>
-              <div className="h-full bg-[var(--accent)] absolute inset-y-0 left-0 rounded-full" style={{ width: `${progressPercent}%` }} />
+          <div className="relative z-10 border-t border-white/10 bg-black/25 px-2.5 pb-2.5 pt-2">
+            <div
+              className="h-1.5 rounded-full overflow-hidden bg-white/20 relative cursor-pointer"
+              onClick={(event) => {
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+                seekDirectly((duration || 1) * percent);
+              }}
+            >
+              <div
+                className="h-full bg-[var(--accent)] absolute inset-y-0 left-0 rounded-full"
+                style={{ width: `${progressPercent}%` }}
+              />
             </div>
           </div>
         </div>

@@ -201,11 +201,20 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .player-menu-option:hover { background: rgba(255,255,255,.1); color: white; }
 .watch-shell {
   isolation: isolate;
-  color: var(--text);
+  color: #fff !important;
   background:
     radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 30rem),
     radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 26rem),
-    var(--bg);
+    #05080c;
+}
+.watch-shell .watch-glass {
+  background: rgba(18, 26, 32, 0.82) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+.watch-shell .watch-muted {
+  color: rgba(255, 255, 255, 0.65) !important;
 }
 .player-stage {
   contain: layout;

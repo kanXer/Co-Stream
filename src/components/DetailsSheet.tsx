@@ -123,6 +123,7 @@ export function DetailsSheet({
       const payload = await response.json() as MediaDetails & { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Could not play this episode.');
       playItem(payload, [payload]);
+      onClose();
     } catch (caught) {
       setEpisodeError(caught instanceof Error ? caught.message : 'Could not play this episode.');
     } finally {
@@ -138,6 +139,7 @@ export function DetailsSheet({
     }
     const queue = details ? [details, ...(details.related || []).filter((entry) => entry.playback)] : [media];
     playItem(media, queue);
+    onClose();
   };
 
   const share = () => {
