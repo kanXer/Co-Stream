@@ -195,7 +195,15 @@ export function DetailsSheet({
 
         <div className="max-w-6xl mx-auto px-5 sm:px-8 pb-28">
           {loading && <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] py-3"><Loader2 size={16} className="animate-spin text-[var(--accent)]" /> Loading playback and cast…</div>}
-          {error && <p className="text-xs text-red-500 py-3">{error}</p>}
+          {error && (
+            <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/8 px-4 py-3 flex items-start gap-3">
+              <span className="text-lg mt-0.5">🚫</span>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-red-400">Stream unavailable</p>
+                <p className="text-[11px] text-red-400/75 mt-0.5 leading-5">{error}</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-wrap gap-2.5 mt-2">
             <button onClick={play} disabled={loading || !canPlay || playingEpisode !== null} className="primary-button min-w-36 disabled:opacity-45 disabled:cursor-not-allowed"><Play size={17} className="fill-current" />{media.playback?.kind === 'youtube' ? 'Watch trailer' : media.mediaType === 'tv' ? `Play S${selectedSeason} E${episodes[0]?.number || 1}` : 'Play film'}</button>

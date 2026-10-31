@@ -1294,9 +1294,26 @@ export function VideoPlayer() {
                 )}
 
                 {!source && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
-                    {isLoading ? <span className="w-10 h-10 rounded-full border-3 border-[#7fffd2] border-t-transparent animate-spin" /> : <Play size={34} className="text-white/25" />}
-                    <p className="text-sm font-bold text-white/70">{isLoading ? 'Preparing playback…' : playbackError || 'No playback source available.'}</p>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-8">
+                    {isLoading ? (
+                      <>
+                        <span className="w-10 h-10 rounded-full border-3 border-[#7fffd2] border-t-transparent animate-spin" />
+                        <p className="text-sm font-bold text-white/70">Preparing playback…</p>
+                      </>
+                    ) : playbackError ? (
+                      <>
+                        <span className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center text-3xl">🚫</span>
+                        <div className="space-y-1.5 max-w-xs">
+                          <p className="text-sm font-black text-white">Stream not available</p>
+                          <p className="text-xs text-white/55 leading-5">{playbackError}</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Play size={34} className="text-white/25" />
+                        <p className="text-sm font-bold text-white/70">No playback source available.</p>
+                      </>
+                    )}
                   </div>
                 )}
 
