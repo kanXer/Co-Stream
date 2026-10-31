@@ -310,28 +310,204 @@ export async function getHomeCatalog(
 
   try {
     if (view === 'home') {
-      const [platformRows, spotlight] = await Promise.all([
+      const currentYear = new Date().getUTCFullYear();
+
+      // Massive parallel fetch for home — all Hindi/Indian focused
+      const [
+        platformRowsResult,
+        spotlightResult,
+        latestHindiMoviesResult,
+        latestHindiSeriesResult,
+        popularHindiMoviesResult,
+        popularHindiSeriesResult,
+        topRatedMoviesResult,
+        topRatedSeriesResult,
+        thisYearMoviesResult,
+        actionMoviesResult,
+        thrillerMoviesResult,
+        romanceMoviesResult,
+        actionSeriesResult,
+        crimeSeriesResult,
+        horrorResult,
+        scifiResult,
+        comedyMoviesResult,
+        familyMoviesResult,
+      ] = await Promise.allSettled([
         Promise.all(platforms.map(async (platform) => ({
           platform,
           ...(await getPlatformHindiRows(platform, region)),
         }))),
         getSpotlightMovies(region),
+        // Latest Hindi movies (current + prev year by release)
+        discoverCurrentNetMirror({ type: 'movie', region: 'IN', country: 'IN', sort: 'release', yearFrom: currentYear - 1, yearTo: currentYear + 1 }),
+        // Latest Hindi series
+        discoverCurrentNetMirror({ type: 'tv', region: 'IN', country: 'IN', sort: 'release', yearFrom: currentYear - 1, yearTo: currentYear + 1 }),
+        // Most popular Hindi movies all time
+        discoverCurrentNetMirror({ type: 'movie', region: 'IN', country: 'IN', sort: 'popularity' }),
+        // Most popular Hindi series
+        discoverCurrentNetMirror({ type: 'tv', region: 'IN', country: 'IN', sort: 'popularity' }),
+        // Top rated movies
+        discoverCurrentNetMirror({ type: 'movie', region: 'IN', sort: 'rating', yearFrom: currentYear - 2, yearTo: currentYear + 1 }),
+        // Top rated series
+        discoverCurrentNetMirror({ type: 'tv', region: 'IN', sort: 'rating', yearFrom: currentYear - 2, yearTo: currentYear + 1 }),
+        // This year's movies
+        discoverCurrentNetMirror({ type: 'movie', region: 'IN', sort: 'release', yearFrom: currentYear, yearTo: currentYear + 1 }),
+        // Action movies
+        searchCurrentNetMirror('Hindi action movie').then((r) => r.filter((i) => i.type === 'movie')),
+        // Thriller movies
+        searchCurrentNetMirror('Hindi thriller movie').then((r) => r.filter((i) => i.type === 'movie')),
+        // Romance movies
+        searchCurrentNetMirror('Hindi romance movie').then((r) => r.filter((i) => i.type === 'movie')),
+        // Action series
+        searchCurrentNetMirror('Hindi action web series').then((r) => r.filter((i) => i.type === 'tv')),
+        // Crime series
+        searchCurrentNetMirror('Hindi crime web series').then((r) => r.filter((i) => i.type === 'tv')),
+        // Horror
+        searchCurrentNetMirror('Hindi horror').then((r) => r),
+        // Sci-fi
+        searchCurrentNetMirror('Hindi sci-fi fantasy movie').then((r) => r.filter((i) => i.type === 'movie')),
+        // Comedy movies
+        searchCurrentNetMirror('Hindi comedy movie').then((r) => r.filter((i) => i.type === 'movie')),
+        // Family
+        searchCurrentNetMirror('Hindi family movie').then((r) => r.filter((i) => i.type === 'movie')),
       ]);
-      const sections = platformRows.flatMap(({ platform, movies, series }) => ([
-        {
-          id: `top10-hindi-${platform}-movie`,
-          title: `Top 10 Hindi Movies on ${platformLabel(platform)}`,
-          subtitle: 'Trending movies with Hindi audio',
-          items: streamableCatalogItems(movies).map((item) => mapCurrentItem(item)),
-        },
-        {
-          id: `top10-hindi-${platform}-tv`,
-          title: `Top 10 Hindi Web Series on ${platformLabel(platform)}`,
-          subtitle: 'Trending Indian and Hindi series',
-          items: streamableCatalogItems(series).map((item) => mapCurrentItem(item)),
-        },
-      ]));
-      const payload: CatalogPayload = { mode: 'netmirror', sections: sections.filter((section) => section.items.length > 0), spotlight };
+
+      const spotlight = spotlightResult.status === 'fulfilled' ? spotlightResult.value : [];
+      const platformRows = platformRowsResult.status === 'fulfilled' ? platformRowsResult.value : [];
+
+      const val = <T>(r: PromiseSettledResult<T[]>): T[] => r.status === 'fulfilled' ? r.value : [];
+
+      const sections: HomeSection[] = [];
+
+      // ── 1. Latest Hindi Movies (top priority) ─────────────────────────
+      const latestHindi = streamableCatalogItems(val(latestHindiMoviesResult));
+      if (latestHindi.length) {
+        sections.push({
+          id: 'latest-hindi-movies',
+          title: '🆕 Latest Hindi Movies',
+          subtitle: 'Newest Bollywood & Indian releases',
+          items: latestHindi.slice(0, 20).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 2. This Year's Releases ────────────────────────────────────────
+      const thisYear = streamableCatalogItems(val(thisYearMoviesResult));
+      if (thisYear.length) {
+        sections.push({
+          id: `hindi-movies-${currentYear}`,
+          title: `🎬 ${currentYear} Bollywood Hits`,
+          subtitle: `Top Indian movies releasing in ${currentYear}`,
+          items: thisYear.slice(0, 15).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 3. Platform Top 10s (movies first, then series) ───────────────
+      for (const { platform, movies, series } of platformRows) {
+        const mItems = streamableCatalogItems(movies);
+        if (mItems.length) {
+          sections.push({
+            id: `top10-hindi-${platform}-movie`,
+            title: `🏆 Top 10 Hindi Movies on ${platformLabel(platform)}`,
+            subtitle: 'Trending movies with Hindi audio',
+            items: mItems.map((i) => mapCurrentItem(i)),
+          });
+        }
+        const sItems = streamableCatalogItems(series);
+        if (sItems.length) {
+          sections.push({
+            id: `top10-hindi-${platform}-tv`,
+            title: `📺 Top 10 Hindi Web Series on ${platformLabel(platform)}`,
+            subtitle: 'Trending Indian and Hindi series',
+            items: sItems.map((i) => mapCurrentItem(i)),
+          });
+        }
+      }
+
+      // ── 4. Most Popular Hindi Movies ──────────────────────────────────
+      const popularMovies = streamableCatalogItems(val(popularHindiMoviesResult));
+      if (popularMovies.length) {
+        sections.push({
+          id: 'popular-hindi-movies',
+          title: '🔥 Most Popular Hindi Movies',
+          subtitle: 'All-time Bollywood fan favourites',
+          items: popularMovies.slice(0, 20).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 5. Top Rated Movies ───────────────────────────────────────────
+      const topMovies = streamableCatalogItems(val(topRatedMoviesResult));
+      if (topMovies.length) {
+        sections.push({
+          id: 'top-rated-hindi-movies',
+          title: '⭐ Top Rated Hindi Movies',
+          subtitle: 'Highest rated Indian films',
+          items: topMovies.slice(0, 15).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 6. Latest Hindi Web Series ────────────────────────────────────
+      const latestSeries = streamableCatalogItems(val(latestHindiSeriesResult));
+      if (latestSeries.length) {
+        sections.push({
+          id: 'latest-hindi-series',
+          title: '🆕 Latest Hindi Web Series',
+          subtitle: 'Freshest Indian streaming shows',
+          items: latestSeries.slice(0, 15).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 7. Popular Hindi Web Series ───────────────────────────────────
+      const popularSeries = streamableCatalogItems(val(popularHindiSeriesResult));
+      if (popularSeries.length) {
+        sections.push({
+          id: 'popular-hindi-series',
+          title: '🔥 Most Popular Hindi Web Series',
+          subtitle: 'Binge-worthy Indian shows',
+          items: popularSeries.slice(0, 15).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 8. Top Rated Web Series ───────────────────────────────────────
+      const topSeries = streamableCatalogItems(val(topRatedSeriesResult));
+      if (topSeries.length) {
+        sections.push({
+          id: 'top-rated-hindi-series',
+          title: '⭐ Top Rated Hindi Web Series',
+          subtitle: 'Critically acclaimed Indian shows',
+          items: topSeries.slice(0, 15).map((i) => mapCurrentItem(i)),
+        });
+      }
+
+      // ── 9–18. Genre Sections ─────────────────────────────────────────
+      const genreData: Array<{ id: string; title: string; subtitle: string; items: NetMirrorCatalogItem[] }> = [
+        { id: 'hindi-action-movies',   title: '💥 Hindi Action Movies',       subtitle: 'High-octane Bollywood action',        items: val(actionMoviesResult)   },
+        { id: 'hindi-thriller-movies', title: '🔪 Hindi Thrillers',            subtitle: 'Edge-of-your-seat suspense films',     items: val(thrillerMoviesResult) },
+        { id: 'hindi-romance-movies',  title: '💕 Hindi Romance Movies',       subtitle: 'Bollywood love stories',               items: val(romanceMoviesResult)  },
+        { id: 'hindi-comedy-movies',   title: '😂 Hindi Comedy Movies',        subtitle: 'Laugh-out-loud Bollywood picks',       items: val(comedyMoviesResult)   },
+        { id: 'hindi-family-movies',   title: '👨‍👩‍👧 Hindi Family Movies',        subtitle: 'Perfect for the whole family',         items: val(familyMoviesResult)   },
+        { id: 'hindi-action-series',   title: '💥 Hindi Action Web Series',    subtitle: 'Action-packed Indian shows',           items: val(actionSeriesResult)   },
+        { id: 'hindi-crime-series',    title: '🕵️ Hindi Crime Series',         subtitle: 'Crime dramas & investigations',        items: val(crimeSeriesResult)    },
+        { id: 'hindi-horror',          title: '👻 Hindi Horror',               subtitle: 'Spine-chilling desi horror',           items: val(horrorResult)         },
+        { id: 'hindi-scifi-movies',    title: '🚀 Hindi Sci-Fi & Fantasy',     subtitle: 'Futuristic Indian blockbusters',       items: val(scifiResult)          },
+      ];
+
+      for (const g of genreData) {
+        const filtered = streamableCatalogItems(g.items);
+        if (filtered.length >= 3) {
+          sections.push({
+            id: g.id,
+            title: g.title,
+            subtitle: g.subtitle,
+            items: filtered.slice(0, 15).map((i) => mapCurrentItem(i)),
+          });
+        }
+      }
+
+      const payload: CatalogPayload = {
+        mode: 'netmirror',
+        sections: sections.filter((s) => s.items.length > 0),
+        spotlight,
+      };
       if (homeCatalogCache.size > 100) homeCatalogCache.clear();
       homeCatalogCache.set(cacheKey, { value: payload, expires: Date.now() + 15 * 60 * 1000 });
       return payload;
