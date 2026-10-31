@@ -1442,7 +1442,7 @@ export function VideoPlayer() {
                 {isExpanded && !isLocked && (
                   <div className={`absolute inset-0 z-10 transition-opacity duration-200 pointer-events-none ${showControls || playerMenu ? 'opacity-100' : 'opacity-0'}`}>
                     {/* ── Unified Top Bar ───────────────────────────────────── */}
-                    <div className="player-controls-top absolute inset-x-0 top-0 pt-[max(0.75rem,env(safe-area-inset-top))] px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pb-12 bg-gradient-to-b from-black/90 via-black/45 to-transparent flex items-center justify-between gap-3 pointer-events-auto">
+                    <div className="player-controls-top absolute inset-x-0 top-0 pt-[max(0.75rem,env(safe-area-inset-top))] px-[max(1.25rem,max(env(safe-area-inset-left),env(safe-area-inset-right)))] pb-12 bg-gradient-to-b from-black/90 via-black/45 to-transparent flex items-center justify-between gap-3 pointer-events-auto">
                       {/* Top-Left: Back + Title & Subtitle */}
                       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         <button
@@ -1545,8 +1545,8 @@ export function VideoPlayer() {
                       </div>
                     </div>
 
-                    {/* ── Left Lock Button (CenterStart) ───────────────────── */}
-                    <div className="absolute left-[max(1rem,env(safe-area-inset-left))] top-1/2 -translate-y-1/2 z-20 pointer-events-auto">
+                    {/* ── Right Lock Button (CenterEnd - Fullscreen) ───────── */}
+                    <div className="absolute right-[max(1rem,env(safe-area-inset-right))] top-1/2 -translate-y-1/2 z-20 pointer-events-auto">
                       <button
                         onClick={() => {
                           setIsLocked(true);
@@ -1608,7 +1608,7 @@ export function VideoPlayer() {
                     </div>
 
                     {/* ── Bottom Cinema Scrubber & Timestamps ──────────────── */}
-                    <div className="player-bottom-bar absolute inset-x-0 bottom-0 pt-20 pb-[max(0.75rem,env(safe-area-inset-bottom))] px-[max(1.25rem,env(safe-area-inset-left))] pr-[max(1.25rem,env(safe-area-inset-right))] bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-auto">
+                    <div className="player-bottom-bar absolute inset-x-0 bottom-0 pt-20 pb-[max(0.75rem,env(safe-area-inset-bottom))] px-[max(1.25rem,max(env(safe-area-inset-left),env(safe-area-inset-right)))] bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-auto">
                       {/* Timestamps */}
                       <div className="flex items-center justify-between text-xs font-bold text-white mb-2 tabular-nums">
                         <span className="text-[#7fffd2]">{formatTime(activePosition)}</span>
@@ -1838,7 +1838,7 @@ export function VideoPlayer() {
 
                 {/* ── Unlock Pill Banner (When Locked) ────────────────── */}
                 {isLocked && showUnlockBanner && (
-                  <div className="absolute left-[max(1.5rem,env(safe-area-inset-left))] top-1/2 -translate-y-1/2 z-30 pointer-events-auto">
+                  <div className="absolute right-[max(1.5rem,env(safe-area-inset-right))] top-1/2 -translate-y-1/2 z-30 pointer-events-auto">
                     <button
                       onClick={() => {
                         setIsLocked(false);
