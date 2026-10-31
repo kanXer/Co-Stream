@@ -322,20 +322,20 @@ const CURATED_HINDI_THRILLER: HindiTitleDef[] = [
 ];
 
 const CURATED_HINDI_SERIES_LIST: HindiTitleDef[] = [
-  { tmdbId: 79141,   title: 'Sacred Games',           year: '2018', poster: 'https://image.tmdb.org/t/p/w185/uEbNtFbK4At9WBDGap23lt1qO9n.jpg', rating: 8.1 },
-  { tmdbId: 84661,   title: 'Mirzapur',               year: '2018', poster: 'https://image.tmdb.org/t/p/w185/p0qM8hhlMF5DuxHBzl2EZR6TehX.jpg', rating: 8.4 },
-  { tmdbId: 93405,   title: 'The Family Man',         year: '2019', poster: 'https://image.tmdb.org/t/p/w185/9wToOVsKuf0XeKhlauzCa3D8Gui.jpg', rating: 8.6 },
-  { tmdbId: 101344,  title: 'Panchayat',              year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8ivTX5q2otqXvH815BcOhxVkTPW.jpg', rating: 8.7 },
-  { tmdbId: 103222,  title: 'Paatal Lok',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8Hcq3HoJE4shH7BWkp9UNSFCE3O.jpg', rating: 8.0 },
-  { tmdbId: 200843,  title: 'Farzi',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/cTS86RwEBIDgCgUmjWQTSoPsK6p.jpg', rating: 8.2 },
-  { tmdbId: 88040,   title: 'Delhi Crime',            year: '2019', poster: 'https://image.tmdb.org/t/p/w185/xkpkTj6KGsjSaet0VQaq0aTn31D.jpg', rating: 8.4 },
-  { tmdbId: 88584,   title: 'Kota Factory',           year: '2019', poster: 'https://image.tmdb.org/t/p/w185/fMBookmwL6HjIgIVTjQ6EMr3pCH.jpg', rating: 8.5 },
-  { tmdbId: 112888,  title: 'Mismatched',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/l65kfL6qhTWd858OqGTr3RWwAUj.jpg', rating: 7.2 },
-  { tmdbId: 133701,  title: 'Rana Naidu',             year: '2023', poster: 'https://image.tmdb.org/t/p/w185/4kUF7cO76W4vEx70KVfwmju6Vud.jpg', rating: 6.5 },
-  { tmdbId: 97893,   title: 'Jamtara – Sabka Number Ayega', year: '2020', poster: 'https://image.tmdb.org/t/p/w185/wqWsyazYqBceNMyRIg9q8HSJEcw.jpg', rating: 7.6 },
-  { tmdbId: 238310,  title: 'The Railway Men',        year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kOYlMHtNSqnf1FgsoK1JJypfkrY.jpg', rating: 8.1 },
-  { tmdbId: 247169,  title: 'Maamla Legal Hai',       year: '2024', poster: 'https://image.tmdb.org/t/p/w185/tDP5vC5wxSpHKx88RdyRpdaSo2u.jpg', rating: 7.5 },
-  { tmdbId: 99966,   title: 'Asur',                   year: '2020', poster: 'https://image.tmdb.org/t/p/w185/hJn71rU1VXNJpAMiWwvSxxaFU00.jpg', rating: 8.4 },
+  { tmdbId: 79352,   title: 'Sacred Games',           year: '2018', poster: 'https://image.tmdb.org/t/p/w185/uEbNtFbK4At9WBDGap23lt1qO9n.jpg', rating: 8.1 },
+  { tmdbId: 84105,   title: 'Mirzapur',               year: '2018', poster: 'https://image.tmdb.org/t/p/w185/p0qM8hhlMF5DuxHBzl2EZR6TehX.jpg', rating: 8.4 },
+  { tmdbId: 93352,   title: 'The Family Man',         year: '2019', poster: 'https://image.tmdb.org/t/p/w185/tE1NUJqw9gV6AVjQ1GTK78LbWJ9.jpg', rating: 8.6 },
+  { tmdbId: 101352,  title: 'Panchayat',              year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8ivTX5q2otqXvH815BcOhxVkTPW.jpg', rating: 8.7 },
+  { tmdbId: 103051,  title: 'Paatal Lok',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/8Hcq3HoJE4shH7BWkp9UNSFCE3O.jpg', rating: 8.0 },
+  { tmdbId: 132117,  title: 'Farzi',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w185/cTS86RwEBIDgCgUmjWQTSoPsK6p.jpg', rating: 8.2 },
+  { tmdbId: 87508,   title: 'Delhi Crime',            year: '2019', poster: 'https://image.tmdb.org/t/p/w185/xkpkTj6KGsjSaet0VQaq0aTn31D.jpg', rating: 8.4 },
+  { tmdbId: 89113,   title: 'Kota Factory',           year: '2019', poster: 'https://image.tmdb.org/t/p/w185/fMBookmwL6HjIgIVTjQ6EMr3pCH.jpg', rating: 8.5 },
+  { tmdbId: 113457,  title: 'Mismatched',             year: '2020', poster: 'https://image.tmdb.org/t/p/w185/l65kfL6qhTWd858OqGTr3RWwAUj.jpg', rating: 7.2 },
+  { tmdbId: 203202,  title: 'Rana Naidu',             year: '2023', poster: 'https://image.tmdb.org/t/p/w185/4kUF7cO76W4vEx70KVfwmju6Vud.jpg', rating: 6.5 },
+  { tmdbId: 96870,   title: 'Jamtara – Sabka Number Ayega', year: '2020', poster: 'https://image.tmdb.org/t/p/w185/wqWsyazYqBceNMyRIg9q8HSJEcw.jpg', rating: 7.6 },
+  { tmdbId: 213895,  title: 'The Railway Men',        year: '2023', poster: 'https://image.tmdb.org/t/p/w185/kOYlMHtNSqnf1FgsoK1JJypfkrY.jpg', rating: 8.1 },
+  { tmdbId: 246483,  title: 'Maamla Legal Hai',       year: '2024', poster: 'https://image.tmdb.org/t/p/w185/tDP5vC5wxSpHKx88RdyRpdaSo2u.jpg', rating: 7.5 },
+  { tmdbId: 100911,  title: 'Asur',                   year: '2020', poster: 'https://image.tmdb.org/t/p/w185/aw8W6JCrE3zsQexfvsu4cDjb1ub.jpg', rating: 8.4 },
 ];
 
 /**
@@ -710,8 +710,8 @@ export async function getHomeCatalog(
         { id: 'hindi-comedy-movies',   title: '😂 Hindi Comedy Movies',        subtitle: 'Laugh-out-loud Bollywood picks',       curated: CURATED_HINDI_COMEDY, live: val(comedyMoviesResult) },
         { id: 'hindi-romance-movies',  title: '💕 Hindi Romance & Drama',      subtitle: 'Heartfelt Bollywood love stories',     curated: CURATED_HINDI_POPULAR.filter((x) => [848116, 1163258, 1146225, 618355, 346648, 960876].includes(x.tmdbId)), live: val(romanceMoviesResult) },
         { id: 'hindi-horror',          title: '👻 Hindi Horror & Mystery',     subtitle: 'Spine-chilling desi supernatural',     curated: CURATED_HINDI_LATEST.filter((x) => [1112426, 980599, 1187058, 1187619].includes(x.tmdbId)), live: val(horrorResult) },
-        { id: 'hindi-action-series',   title: '💥 Hindi Action Web Series',    subtitle: 'Action-packed Indian shows',           curated: CURATED_HINDI_SERIES_LIST.filter((x) => [79141, 84661, 93405, 103222, 200843, 99966].includes(x.tmdbId)), live: val(actionSeriesResult), type: 'tv' },
-        { id: 'hindi-crime-series',    title: '🕵️ Hindi Crime Web Series',     subtitle: 'Crime dramas & gritty investigations', curated: CURATED_HINDI_SERIES_LIST.filter((x) => [88040, 97893, 238310, 247169, 103222].includes(x.tmdbId)), live: val(crimeSeriesResult), type: 'tv' },
+        { id: 'hindi-action-series',   title: '💥 Hindi Action Web Series',    subtitle: 'Action-packed Indian shows',           curated: CURATED_HINDI_SERIES_LIST.filter((x) => [79352, 84105, 93352, 103051, 132117, 100911].includes(x.tmdbId)), live: val(actionSeriesResult), type: 'tv' },
+        { id: 'hindi-crime-series',    title: '🕵️ Hindi Crime Web Series',     subtitle: 'Crime dramas & gritty investigations', curated: CURATED_HINDI_SERIES_LIST.filter((x) => [87508, 96870, 213895, 246483, 103051].includes(x.tmdbId)), live: val(crimeSeriesResult), type: 'tv' },
         { id: 'hindi-scifi-movies',    title: '🚀 Hindi Sci-Fi & Fantasy',     subtitle: 'Futuristic Indian blockbusters',       curated: CURATED_HINDI_LATEST.filter((x) => [801688, 496331, 799177].includes(x.tmdbId)), live: val(scifiResult) },
       ];
 
