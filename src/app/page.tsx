@@ -185,6 +185,15 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [tab]);
+
+  const switchTab = (nextTab: Tab) => {
+    setTab(nextTab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  };
+
+  useEffect(() => {
     backNavigationState.current = {
       tab,
       selectedItem: Boolean(selectedItem),
@@ -340,19 +349,19 @@ export default function HomePage() {
     <div className={`min-h-screen min-w-0 max-w-full overflow-x-clip text-[var(--text)] ${currentItem ? 'pb-52' : 'pb-28'}`}>
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--bg)]/78 backdrop-blur-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <button onClick={() => setTab('home')} className="flex items-center gap-2.5">
+          <button onClick={() => switchTab('home')} className="flex items-center gap-2.5">
             <span className="relative w-10 h-10 rounded-2xl overflow-hidden shadow-lg"><Image src="/icon-192.png" alt="" fill sizes="40px" className="object-cover" priority /></span>
             <span className="text-left"><span className="block text-lg font-black tracking-[-0.04em] leading-none">Co-Stream</span><span className="block text-[8px] font-black uppercase tracking-[.15em] text-[var(--accent)] mt-1">Cinema, together</span></span>
           </button>
           <nav className="hidden md:flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--panel)] p-1">
-            <TopNav active={tab === 'home'} onClick={() => setTab('home')} icon={<House size={15} />} label="Home" />
-            <TopNav active={tab === 'movie'} onClick={() => setTab('movie')} icon={<Film size={15} />} label="Movies" />
-            <TopNav active={tab === 'tv'} onClick={() => setTab('tv')} icon={<Tv size={15} />} label="Web Series" />
-            <TopNav active={tab === 'offline'} onClick={() => setTab('offline')} icon={<Download size={15} />} label="Offline" />
+            <TopNav active={tab === 'home'} onClick={() => switchTab('home')} icon={<House size={15} />} label="Home" />
+            <TopNav active={tab === 'movie'} onClick={() => switchTab('movie')} icon={<Film size={15} />} label="Movies" />
+            <TopNav active={tab === 'tv'} onClick={() => switchTab('tv')} icon={<Tv size={15} />} label="Web Series" />
+            <TopNav active={tab === 'offline'} onClick={() => switchTab('offline')} icon={<Download size={15} />} label="Offline" />
           </nav>
           <div className="flex items-center gap-2">
             <button onClick={() => setPlatformPickerOpen(true)} className="icon-button" title="Choose platforms"><SlidersHorizontal size={17} /></button>
-            <button onClick={() => setTab('search')} className="icon-button"><Search size={17} /></button>
+            <button onClick={() => switchTab('search')} className="icon-button"><Search size={17} /></button>
             <button onClick={() => void loadHome(true)} className="icon-button hidden sm:flex" title="Refresh feed"><RefreshCw size={17} className={homeLoading ? 'animate-spin text-[var(--accent)]' : ''} /></button>
             <button onClick={() => setSettingsOpen(true)} className="w-9 h-9 rounded-full border border-[var(--line)] bg-[var(--panel)] overflow-hidden flex items-center justify-center text-[var(--text-muted)]">
               {profile?.photoUrl ? <img src={profile.photoUrl} alt={profile.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" /> : <UserRound size={17} />}
@@ -379,7 +388,7 @@ export default function HomePage() {
                   <div className="flex items-center gap-2.5 mt-4 text-xs font-bold text-white/70"><span>{heroItem.year}</span>{heroItem.rating > 0 && <><span>•</span><span className="inline-flex items-center gap-1 text-amber-300"><Star size={12} className="fill-current" />{heroItem.rating.toFixed(1)}</span></>}<span>•</span><span>{heroItem.mediaType === 'tv' ? 'Series' : 'Movie'}</span></div>
                   {heroItem.overview && <p className="mt-4 text-sm leading-6 text-white/65 line-clamp-3 max-w-xl">{heroItem.overview}</p>}
                   <div className="flex flex-wrap gap-2.5 mt-6">
-                    <button onClick={() => openItem(heroItem)} className="hero-primary"><Play size={18} className="fill-current" />Play now</button>
+                    <button onClick={() => playItem(heroItem, spotlight.length ? spotlight : [heroItem])} className="hero-primary"><Play size={18} className="fill-current" />Play now</button>
                     <button onClick={() => openItem(heroItem)} className="hero-secondary"><Film size={17} />Details</button>
                   </div>
                 </div>
@@ -474,10 +483,10 @@ export default function HomePage() {
       <VideoPlayer />
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-[calc(4.5rem+env(safe-area-inset-bottom,0px))] max-w-full overflow-hidden pb-[env(safe-area-inset-bottom,0px)] border-t border-[var(--line)] bg-[var(--bg)]/93 backdrop-blur-2xl md:hidden flex items-center justify-around">
-        <BottomNav active={tab === 'home'} onClick={() => setTab('home')} icon={<House size={20} />} label="Home" />
-        <BottomNav active={tab === 'movie'} onClick={() => setTab('movie')} icon={<Film size={20} />} label="Movies" />
-        <BottomNav active={tab === 'tv'} onClick={() => setTab('tv')} icon={<Tv size={20} />} label="Web Series" />
-        <BottomNav active={tab === 'offline'} onClick={() => setTab('offline')} icon={<Download size={20} />} label="Offline" />
+        <BottomNav active={tab === 'home'} onClick={() => switchTab('home')} icon={<House size={20} />} label="Home" />
+        <BottomNav active={tab === 'movie'} onClick={() => switchTab('movie')} icon={<Film size={20} />} label="Movies" />
+        <BottomNav active={tab === 'tv'} onClick={() => switchTab('tv')} icon={<Tv size={20} />} label="Web Series" />
+        <BottomNav active={tab === 'offline'} onClick={() => switchTab('offline')} icon={<Download size={20} />} label="Offline" />
       </nav>
 
       {selectedItem && <DetailsSheet item={selectedItem} onClose={() => setSelectedItem(null)} onSelect={setSelectedItem} />}

@@ -744,7 +744,7 @@ export async function getNetMirrorPlaylist(id: string): Promise<NetMirrorPlaylis
 // use paths such as /files/<id>/... . Keep the allowlist narrow enough to avoid
 // turning this route into a general-purpose open proxy, but wide enough for the
 // hosts the manifests actually reference today.
-const ALLOWED_CDN_HOST = /(^|\.)(freecdn\d*|nm-cdn\d*)\.top$/i;
+const ALLOWED_CDN_HOST = /(^|\.)(freecdn\d*|nm-cdn\d*|makhi\d*)\.top$/i;
 const CURRENT_MEDIA_HOST = /(^|\.)(hakunaymatata\.com|mxcontent\.net|messycloud\.ink|juicybits\.io|aoneroom\.com)$/i;
 
 export function isAllowedNetMirrorTarget(target: string) {

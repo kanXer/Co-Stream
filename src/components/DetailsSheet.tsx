@@ -93,10 +93,7 @@ export function DetailsSheet({
 
   const media = details || item;
   const saved = isWatchlisted(media.id);
-  const canPlay = Boolean(media.playback) && !(
-    media.id.startsWith('netmirror-')
-    && (media.playback?.mimeType?.includes('mpegurl') || media.playback?.url?.includes('net52.cc'))
-  );
+  const canPlay = Boolean(media.playback?.url);
   const durationMinutes = media.durationSeconds ? Math.round(media.durationSeconds / 60) : 0;
 
   const loadSeason = async (season: number) => {
