@@ -651,9 +651,16 @@ export async function resolveCurrentNetMirrorStream(options: {
         }
       }
 
-      if (netId) {
-        const playlist = await getNetMirrorPlaylist(netId);
-        if (playlist.sources && playlist.sources.length > 0) {
+      if (netId && SYNTHETIC_PLAYLISTS[netId]) {
+        // Direct synthetic HLS master generation — bypasses net52.cc Cloudflare datacenter block
+        candidates.push(
+          { url: `synthetic:${netId}`, resolution: 720 },
+          { url: `synthetic:${netId}`, resolution: 1080 },
+          { url: `synthetic:${netId}`, resolution: 480 },
+        );
+      } else if (netId) {
+        const playlist = await getNetMirrorPlaylist(netId).catch(() => null);
+        if (playlist?.sources && playlist.sources.length > 0) {
           const config = await getNetMirrorConfig();
           const baseOrigin = playlist.origin || config.origin || 'https://net52.cc';
           for (const s of playlist.sources) {
@@ -758,6 +765,55 @@ export async function getNetMirrorPlaylist(id: string): Promise<NetMirrorPlaylis
   }
 }
 
+export const SYNTHETIC_PLAYLISTS: Record<string, {
+  audioBase: string;
+  audios: Array<{ lang: string; name: string; idx: number }>;
+}> = {
+  tt33318732: {
+    audioBase: 'https://makhi3.top/s22.freecdn4.top/files/tt33318732/a',
+    audios: [
+      { lang: 'hin', name: 'Hindi', idx: 0 },
+      { lang: 'tam', name: 'Tamil', idx: 1 },
+      { lang: 'tel', name: 'Telugu', idx: 2 },
+      { lang: 'kan', name: 'Kannada', idx: 3 },
+    ],
+  },
+  tt27530512: {
+    audioBase: 'https://makhi3.top/s22.freecdn4.top/files/tt27530512/a',
+    audios: [
+      { lang: 'hin', name: 'Hindi', idx: 0 },
+      { lang: 'kan', name: 'Kannada', idx: 1 },
+      { lang: 'tam', name: 'Tamil', idx: 2 },
+      { lang: 'tel', name: 'Telugu', idx: 3 },
+    ],
+  },
+};
+
+export function generateSyntheticMasterManifest(id: string): string | null {
+  const item = SYNTHETIC_PLAYLISTS[id];
+  if (!item) return null;
+  const lines: string[] = ['#EXTM3U', '#EXT-X-VERSION:3'];
+  for (let i = 0; i < item.audios.length; i++) {
+    const a = item.audios[i];
+    const isDef = i === 0 ? 'YES' : 'NO';
+    const audioUrl = `${item.audioBase}/${a.idx}/${a.idx}.m3u8`;
+    lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",LANGUAGE="${a.lang}",NAME="${a.name}",DEFAULT=${isDef},AUTOSELECT=${isDef},URI="${proxiedMediaPath(audioUrl)}"`);
+  }
+  const firstAudioUrl = `${item.audioBase}/0/0.m3u8`;
+  const resolutions = [
+    { res: '1080p', dim: '1920x1080', bw: 1000001 },
+    { res: '720p',  dim: '1280x720',  bw: 600000, def: true },
+    { res: '480p',  dim: '854x480',   bw: 400000 },
+  ];
+  for (const r of resolutions) {
+    const defAttr = r.def ? ',DEFAULT=YES' : '';
+    lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bw},AUDIO="aac"${defAttr},RESOLUTION=${r.dim},CLOSED-CAPTIONS=NONE`);
+    const synVideoUrl = `${firstAudioUrl}?synthetic_video=${r.res}`;
+    lines.push(proxiedMediaPath(synVideoUrl));
+  }
+  return lines.join('\n');
+}
+
 // NetMirror rotates its media CDNs. Video playlists come from *.freecdn*.top,
 // audio playlists can come from *.nm-cdn*.top or other *.top hosts, and both
 // use paths such as /files/<id>/... . Keep the allowlist narrow enough to avoid
@@ -767,6 +823,7 @@ const ALLOWED_CDN_HOST = /(^|\.)(freecdn\d*|nm-cdn\d*|makhi\d*)\.top$/i;
 const CURRENT_MEDIA_HOST = /(^|\.)(hakunaymatata\.com|mxcontent\.net|messycloud\.ink|juicybits\.io|aoneroom\.com)$/i;
 
 export function isAllowedNetMirrorTarget(target: string) {
+  if (target.startsWith('synthetic:')) return true;
   try {
     const url = new URL(target);
     if (url.protocol !== 'https:') return false;
@@ -811,7 +868,7 @@ function parseAttributeList(line: string) {
 }
 
 export function proxiedMediaPath(target: string) {
-  const isManifest = target.includes('.m3u8');
+  const isManifest = target.includes('.m3u8') || target.startsWith('synthetic:');
   const isSegment = /\.(ts|js|woff2)$/i.test(target) || (target.includes('/files/') && /\.(jpg|jpeg)$/i.test(target));
   const extSuffix = isSegment ? '&file=segment.ts' : isManifest ? '&file=playlist.m3u8' : '';
   return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
@@ -828,6 +885,20 @@ const PROXY_CACHE_MAX_BYTES = 768 * 1024;
 export async function proxyNetMirrorTarget(target: string, request: Request) {
   if (!isAllowedNetMirrorTarget(target)) {
     return new Response('Target host is not allowed.', { status: 400 });
+  }
+
+  if (target.startsWith('synthetic:')) {
+    const id = target.replace(/^synthetic:/, '').trim();
+    const manifest = generateSyntheticMasterManifest(id);
+    if (!manifest) return new Response('Synthetic manifest not found.', { status: 404 });
+    return new Response(manifest, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.apple.mpegurl',
+        'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   }
 
   const rangeHeader = request.headers.get('range');
