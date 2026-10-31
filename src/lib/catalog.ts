@@ -89,22 +89,24 @@ function uniqueCatalogItems(items: NetMirrorCatalogItem[]) {
   });
 }
 
-// Titles known to appear in catalogs but have no playable stream on NetMirror.
-// Matched case-insensitively against the exact title string.
-const KNOWN_NON_STREAMABLE: Set<string> = new Set([
-  'cid',
-  'c.i.d.',
-  'c.i.d',
-]);
+// Titles and IDs known to appear in catalogs but have no playable stream on NetMirror.
+const NON_STREAMABLE_TMDB_IDS = new Set<number>([15226]); // C.I.D. (1998 TV Series)
 
-function isKnownNonStreamable(title: string) {
-  return KNOWN_NON_STREAMABLE.has(title.trim().toLowerCase());
+export function isNonStreamableItem(item: { tmdbId?: number | string; title?: string }): boolean {
+  if (item.tmdbId && NON_STREAMABLE_TMDB_IDS.has(Number(item.tmdbId))) return true;
+  if (!item.title) return false;
+  const t = item.title.trim().toLowerCase();
+  const clean = t.replace(/[^a-z0-9]/g, '');
+  if (clean === 'cid' || clean.startsWith('cid')) return true;
+  if (/\b(c\.?\s*i\.?\s*d\.?)\b/i.test(t)) return true;
+  if (/crime\s+investigation\s+department/i.test(t)) return true;
+  return false;
 }
 
-/** Like uniqueCatalogItems but also excludes items explicitly marked as non-streamable. */
+/** Like uniqueCatalogItems but also excludes items explicitly marked as non-streamable or known unplayable. */
 function streamableCatalogItems(items: NetMirrorCatalogItem[]) {
   return uniqueCatalogItems(items).filter(
-    (item) => item.streamable !== false && !isKnownNonStreamable(item.title),
+    (item) => item.streamable !== false && !isNonStreamableItem(item),
   );
 }
 
@@ -114,9 +116,9 @@ async function fillHindiAudioTitles(
   type: 'movie' | 'tv',
   limit = 10,
 ) {
-  const picked = uniqueCatalogItems(initial).slice(0, limit);
+  const picked = streamableCatalogItems(initial).slice(0, limit);
   const seen = new Set(picked.map((item) => `${item.type}:${item.tmdbId}`));
-  const remaining = candidates.filter((item) => !seen.has(`${item.type}:${item.tmdbId}`));
+  const remaining = streamableCatalogItems(candidates).filter((item) => !seen.has(`${item.type}:${item.tmdbId}`));
 
   for (let index = 0; index < remaining.length && picked.length < limit; index += 5) {
     const batch = remaining.slice(index, index + 5);
@@ -252,6 +254,7 @@ async function getSpotlightMovies(region = 'IN'): Promise<MediaItem[]> {
   const addItems = (items: NetMirrorCatalogItem[], sourceBonus: number) => {
     for (const item of items) {
       if (!item.tmdbId || seen.has(item.tmdbId)) continue;
+      if (isNonStreamableItem(item)) continue;
       if (!item.poster && !item.backdrop) continue;
       seen.add(item.tmdbId);
       candidates.push({ item, score: scoreItem(item, sourceBonus) });
@@ -668,6 +671,7 @@ export async function searchCatalog(
   try {
     const results = (await searchCurrentNetMirror(query))
       .filter((item) => filter === 'all' || item.type === filter)
+      .filter((item) => !isNonStreamableItem(item))
       .map((item) => mapCurrentItem(item));
     return { mode: 'netmirror', results };
   } catch (error) {

@@ -288,9 +288,9 @@ export function DetailsSheet({
 
           {details?.related.length ? (
             <section className="mt-9">
-              <div><p className="eyebrow">Up next</p><h3 className="text-xl font-black">More like this</h3></div>
+              <div className="mb-4"><p className="eyebrow">Up next</p><h3 className="text-xl font-black">More like this</h3></div>
               <div className="media-grid-scroll mt-4">
-                {details.related.slice(0, 12).map((related) => <MediaCard key={related.id} item={related} onOpen={(next) => onSelect(next)} />)}
+                {details.related.filter((r) => !/^(cid|c\.i\.d)/i.test(r.title.trim()) && r.providerId !== 'tmdb:tv:15226').slice(0, 12).map((related) => <MediaCard key={related.id} item={related} onOpen={(next) => onSelect(next)} />)}
               </div>
             </section>
           ) : null}

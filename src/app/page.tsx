@@ -308,9 +308,9 @@ export default function HomePage() {
 
   const openItem = (item: MediaItem) => setSelectedItem(item);
   const playFrom = (item: MediaItem, items: MediaItem[]) => playItem(item, items);
-  const spotlight = catalog?.spotlight || [];
+  const spotlight = (catalog?.spotlight || []).filter((item) => !isBlockedMediaItem(item));
   // Fallback: use first section item if no spotlight available
-  const featuredQueue = catalog?.sections[0]?.items || [];
+  const featuredQueue = (catalog?.sections[0]?.items || []).filter((item) => !isBlockedMediaItem(item));
   const languageName = AVAILABLE_LANGUAGES.find((language) => language.code === selectedLanguages[0])?.name || 'your language';
   const [greeting, setGreeting] = useState('Good evening');
   const [spotlightIdx, setSpotlightIdx] = useState(0);
@@ -328,7 +328,7 @@ export default function HomePage() {
     }, 5000);
     return () => clearInterval(timer);
   }, [spotlight.length]);
-  const heroItem = spotlight.length > 0 ? spotlight[spotlightIdx] : (catalog?.sections[0]?.items[0] || null);
+  const heroItem = spotlight.length > 0 ? spotlight[spotlightIdx] : (catalog?.sections[0]?.items.filter((item) => !isBlockedMediaItem(item))[0] || null);
   useEffect(() => {
     // Only prefetch playback for items that are streamable
     if (!heroItem?.playback) return;
@@ -487,19 +487,57 @@ export default function HomePage() {
   );
 }
 
-function MediaSection({ title, subtitle, items, onOpen, onPlay, ranked = false }: { title: string; subtitle: string; items: MediaItem[]; onOpen: (item: MediaItem) => void; onPlay: (item: MediaItem) => void; ranked?: boolean }) {
-  if (!items.length) return null;
+function isBlockedMediaItem(item: { id?: string; providerId?: string; catalogId?: number; title?: string }) {
+  if (item.catalogId === 15226) return true;
+  if (item.id && /15226/.test(item.id)) return true;
+  if (item.providerId && /15226/.test(item.providerId)) return true;
+  if (!item.title) return false;
+  const t = item.title.trim().toLowerCase();
+  const clean = t.replace(/[^a-z0-9]/g, '');
+  if (clean === 'cid' || clean.startsWith('cid')) return true;
+  if (/\b(c\.?\s*i\.?\s*d\.?)\b/i.test(t)) return true;
+  if (/crime\s+investigation\s+department/i.test(t)) return true;
+  return false;
+}
+
+function MediaSection({
+  title,
+  subtitle,
+  items,
+  onOpen,
+  onPlay,
+  ranked = false,
+}: {
+  title: string;
+  subtitle: string;
+  items: MediaItem[];
+  onOpen: (item: MediaItem) => void;
+  onPlay: (item: MediaItem) => void;
+  ranked?: boolean;
+}) {
+  const visibleItems = items.filter((item) => !isBlockedMediaItem(item));
+  if (!visibleItems.length) return null;
   return (
-    <section className="space-y-3">
-      <div className="section-heading">
+    <section className="mb-8 sm:mb-10">
+      <div className="section-heading mb-4">
         <div>
           <p className="eyebrow">{subtitle}</p>
           <h2>{title}</h2>
         </div>
-        <span className="text-[10px] font-bold text-[var(--text-faint)] shrink-0">{items.length} titles</span>
+        <span className="text-[10px] font-bold text-[var(--text-faint)] shrink-0">
+          {visibleItems.length} titles
+        </span>
       </div>
-      <div className="media-grid-scroll">
-        {items.map((item, index) => <MediaCard key={item.id} item={item} onOpen={onOpen} onPlay={onPlay} rank={ranked && index < 10 ? index + 1 : undefined} />)}
+      <div className="media-grid-scroll mt-4">
+        {visibleItems.map((item, index) => (
+          <MediaCard
+            key={item.id}
+            item={item}
+            onOpen={onOpen}
+            onPlay={onPlay}
+            rank={ranked && index < 10 ? index + 1 : undefined}
+          />
+        ))}
       </div>
     </section>
   );

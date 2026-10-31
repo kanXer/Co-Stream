@@ -126,11 +126,11 @@ export function LibraryView({
           </div>
 
           {continueWatching.length > 0 && (
-            <section><div className="section-heading"><div><p className="eyebrow">Resume</p><h3>Continue watching</h3></div></div><div className="media-grid-scroll mt-4">{continueWatching.slice(0, 10).map((item) => <MediaCard key={item.id} item={item} onOpen={onOpen} onPlay={() => playItem(item, continueWatching)} />)}</div></section>
+            <section className="mb-8"><div className="section-heading mb-4"><div><p className="eyebrow">Resume</p><h3>Continue watching</h3></div></div><div className="media-grid-scroll mt-4">{continueWatching.slice(0, 10).map((item) => <MediaCard key={item.id} item={item} onOpen={onOpen} onPlay={() => playItem(item, continueWatching)} />)}</div></section>
           )}
 
           {recentItems.length > 0 && (
-            <section><div className="section-heading"><div><p className="eyebrow">Recently opened</p><h3>Back to your stories</h3></div><button onClick={() => setSection('history')} className="small-pill">See all</button></div><div className="mt-3 space-y-1">{recentItems.slice(0, 5).map((item) => <MediaRow key={item.id} item={item} onOpen={() => onOpen(item)} onPlay={() => playItem(item, recentItems)} />)}</div></section>
+            <section className="mb-8"><div className="section-heading mb-4"><div><p className="eyebrow">Recently opened</p><h3>Back to your stories</h3></div><button onClick={() => setSection('history')} className="small-pill">See all</button></div><div className="mt-4 space-y-1">{recentItems.slice(0, 5).map((item) => <MediaRow key={item.id} item={item} onOpen={() => onOpen(item)} onPlay={() => playItem(item, recentItems)} />)}</div></section>
           )}
         </div>
       )}
