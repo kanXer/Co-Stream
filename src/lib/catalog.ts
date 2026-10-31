@@ -168,9 +168,33 @@ function mapSpotlightItem(item: NetMirrorCatalogItem): MediaItem {
   };
 }
 
+// Curated big Hindi/Bollywood movies — guaranteed to appear in the banner
+// when the live API doesn't return enough content with images.
+const HINDI_SPOTLIGHT_FALLBACK: { tmdbId: number; title: string; year: string }[] = [
+  { tmdbId: 1234139, title: 'Jailer 2',              year: '2026' },
+  { tmdbId: 1213243, title: 'Toxic',                  year: '2026' },
+  { tmdbId: 1109086, title: 'War 2',                  year: '2025' },
+  { tmdbId: 857598,  title: 'Pushpa 2 - The Rule',    year: '2024' },
+  { tmdbId: 801688,  title: 'Kalki 2898-AD',          year: '2024' },
+  { tmdbId: 1112426, title: 'Stree 2',                year: '2024' },
+  { tmdbId: 1014214, title: 'Singham Again',          year: '2024' },
+  { tmdbId: 1064213, title: 'Animal',                 year: '2023' },
+  { tmdbId: 951534,  title: 'Jawan',                  year: '2023' },
+  { tmdbId: 1010581, title: 'Pathaan',                year: '2023' },
+  { tmdbId: 726045,  title: 'KGF Chapter 2',          year: '2022' },
+  { tmdbId: 691033,  title: 'RRR',                    year: '2022' },
+  { tmdbId: 778696,  title: 'Brahmastra Part One',    year: '2022' },
+  { tmdbId: 820067,  title: 'Vikram',                 year: '2022' },
+  { tmdbId: 882059,  title: 'Drishyam 2',             year: '2022' },
+  { tmdbId: 748783,  title: 'The Kashmir Files',      year: '2022' },
+  { tmdbId: 632747,  title: 'Sooryavanshi',           year: '2021' },
+  { tmdbId: 635302,  title: 'Shershaah',              year: '2021' },
+  { tmdbId: 580489,  title: 'Bhool Bhulaiyaa 2',      year: '2022' },
+];
+
 /**
- * Returns a curated list of the latest big Indian movies for the home spotlight.
- * Prioritises current-year and upcoming releases. Results are cached for 30 min.
+ * Returns a curated list of the latest big Hindi/Bollywood movies for the home spotlight.
+ * Strongly prioritises Hindi-language Indian content. Cached for 30 min.
  */
 async function getSpotlightMovies(region = 'IN'): Promise<MediaItem[]> {
   const cacheKey = `spotlight:${region}`;
@@ -179,51 +203,62 @@ async function getSpotlightMovies(region = 'IN'): Promise<MediaItem[]> {
 
   const currentYear = new Date().getUTCFullYear();
 
-  // Fetch both current-year+upcoming and last-year big releases in parallel.
-  const [upcomingResult, recentResult, homeResult] = await Promise.allSettled([
-    discoverCurrentNetMirror({ type: 'movie', region, sort: 'release', yearFrom: currentYear, yearTo: currentYear + 1 }),
-    discoverCurrentNetMirror({ type: 'movie', region, sort: 'release', yearFrom: currentYear - 1, yearTo: currentYear }),
+  // Parallel: latest Hindi releases + popular Hindi + home rails (for trending rail)
+  const [latestResult, popularResult, homeResult, hindiSearchResult] = await Promise.allSettled([
+    discoverCurrentNetMirror({ type: 'movie', region: 'IN', country: 'IN', sort: 'release', yearFrom: currentYear - 1, yearTo: currentYear + 1 }),
+    discoverCurrentNetMirror({ type: 'movie', region: 'IN', country: 'IN', sort: 'popularity' }),
     getCurrentNetMirrorHome(),
+    searchCurrentNetMirror('Hindi movie 2024 2025').then((items) => items.filter((i) => i.type === 'movie')),
   ]);
 
-  const upcoming = upcomingResult.status === 'fulfilled' ? upcomingResult.value : [];
-  const recent = recentResult.status === 'fulfilled' ? recentResult.value : [];
+  const latest  = latestResult.status  === 'fulfilled' ? latestResult.value  : [];
+  const popular = popularResult.status === 'fulfilled' ? popularResult.value : [];
+  const homeRails = homeResult.status  === 'fulfilled' ? homeResult.value    : [];
+  const hindiSearchItems = hindiSearchResult.status === 'fulfilled' ? hindiSearchResult.value : [];
 
-  // Pull "coming soon" / "upcoming" rail items from the home rails if available.
-  const homeRails = homeResult.status === 'fulfilled' ? homeResult.value : [];
-  const comingSoonItems = homeRails
-    .filter((rail) => /coming soon|upcoming|new release|trending/i.test(rail.title))
+  // Extract "trending / new release / bollywood / hindi" rails from home feed
+  const hindiRailItems = homeRails
+    .filter((rail) => /trending|new release|bollywood|hindi|indian/i.test(rail.title))
     .flatMap((rail) => rail.items)
     .filter((item) => item.type === 'movie');
 
-  // Merge & deduplicate by tmdbId, prioritising upcoming > comingSoon > recent.
-  const seen = new Set<number>();
-  const merged: NetMirrorCatalogItem[] = [];
-  for (const item of [...upcoming, ...comingSoonItems, ...recent]) {
-    if (!item.tmdbId || seen.has(item.tmdbId)) continue;
-    // Must have at least a poster or backdrop to be shown in hero.
-    if (!item.poster && !item.backdrop) continue;
-    seen.add(item.tmdbId);
-    merged.push(item);
-    if (merged.length >= 8) break;
+  // Score each item: prefer latest year, must have poster or backdrop
+  function scoreItem(item: NetMirrorCatalogItem, sourceBonus: number) {
+    const yr = Number(item.year) || 0;
+    const yearScore = yr >= currentYear ? 30 : yr >= currentYear - 1 ? 20 : yr >= currentYear - 2 ? 10 : 0;
+    const imageScore = (item.poster || item.backdrop) ? 15 : -999; // must have image
+    const ratingScore = Math.min(Number(item.rating) || 0, 10) * 2;
+    return yearScore + imageScore + ratingScore + sourceBonus;
   }
 
-  // If we couldn't pull enough from the API, pad with a curated hand-picked list
-  // of known big Indian titles (tmdbIds verified). These will dedup via `seen`.
-  const FALLBACK_TMDB_IDS: { tmdbId: number; title: string; year: string; type: 'movie' | 'tv' }[] = [
-    { tmdbId: 1234139, title: 'Jailer 2', year: '2026', type: 'movie' },
-    { tmdbId: 1213243, title: 'Toxic', year: '2026', type: 'movie' },
-    { tmdbId: 1109086, title: 'War 2', year: '2025', type: 'movie' },
-    { tmdbId: 857598,  title: 'Pushpa 2 - The Rule', year: '2024', type: 'movie' },
-    { tmdbId: 801688,  title: 'Kalki 2898-AD', year: '2024', type: 'movie' },
-    { tmdbId: 1112426, title: 'Stree 2', year: '2024', type: 'movie' },
-    { tmdbId: 1014214, title: 'Singham Again', year: '2024', type: 'movie' },
-  ];
-  for (const fb of FALLBACK_TMDB_IDS) {
+  // Merge candidates — order: latest > hindi rails > popular > search
+  const candidates: Array<{ item: NetMirrorCatalogItem; score: number }> = [];
+  const seen = new Set<number>();
+
+  const addItems = (items: NetMirrorCatalogItem[], sourceBonus: number) => {
+    for (const item of items) {
+      if (!item.tmdbId || seen.has(item.tmdbId)) continue;
+      if (!item.poster && !item.backdrop) continue;
+      seen.add(item.tmdbId);
+      candidates.push({ item, score: scoreItem(item, sourceBonus) });
+    }
+  };
+
+  addItems(latest,          25); // latest IN releases — highest priority
+  addItems(hindiRailItems,  20); // trending Hindi rails
+  addItems(hindiSearchItems,15); // Hindi keyword search
+  addItems(popular,         10); // popular IN movies
+
+  // Sort by score descending, pick top 8
+  candidates.sort((a, b) => b.score - a.score);
+  const merged: NetMirrorCatalogItem[] = candidates.slice(0, 8).map((c) => c.item);
+
+  // Pad with curated fallback if still < 6 good items
+  for (const fb of HINDI_SPOTLIGHT_FALLBACK) {
+    if (merged.length >= 8) break;
     if (seen.has(fb.tmdbId)) continue;
     seen.add(fb.tmdbId);
-    merged.push({ tmdbId: fb.tmdbId, title: fb.title, year: fb.year, type: fb.type } as NetMirrorCatalogItem);
-    if (merged.length >= 8) break;
+    merged.push({ tmdbId: fb.tmdbId, title: fb.title, year: fb.year, type: 'movie' } as NetMirrorCatalogItem);
   }
 
   const items = merged.slice(0, 6).map(mapSpotlightItem);
