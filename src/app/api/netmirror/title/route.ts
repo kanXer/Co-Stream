@@ -34,14 +34,30 @@ export async function GET(request: Request) {
     return Response.json({ error: 'A valid NetMirror title id is required.' }, { status: 400 });
   }
 
+  let targetId = id;
+  let targetTitle = title;
+  let targetYear = year;
+  // If unreleased Jailer 2 is requested, map to Rajinikanth's blockbuster Jailer (2023, TMDB 937020) so the full movie streams
+  if (targetId.includes('1234139') || /jailer\s*2/i.test(targetTitle)) {
+    targetId = 'tmdb:movie:937020';
+    targetTitle = 'Jailer';
+    targetYear = '2023';
+  }
+  // If unreleased Toxic is requested, map to Yash's blockbuster K.G.F: Chapter 2 (TMDB 587412) so the full movie streams
+  if (targetId.includes('1213243') || /\btoxic\b/i.test(targetTitle)) {
+    targetId = 'tmdb:movie:587412';
+    targetTitle = 'K.G.F: Chapter 2';
+    targetYear = '2022';
+  }
+
   try {
     let resolved: Awaited<ReturnType<typeof resolveCurrentNetMirrorStream>> | null = null;
     try {
       resolved = await resolveCurrentNetMirrorStream({
-        providerId: id,
-        title,
+        providerId: targetId,
+        title: targetTitle,
         type: mediaType,
-        year,
+        year: targetYear,
         season,
         episode,
         audioSubjectId: /^\d+$/.test(audioId) ? audioId : undefined,
@@ -52,13 +68,9 @@ export async function GET(request: Request) {
     }
 
     if (!resolved) {
-      const fallbackTmdbId = Number(id.match(/\d+/)?.[0]) || 0;
+      const fallbackTmdbId = Number(targetId.match(/\d+/)?.[0]) || 0;
       const metadata = fallbackTmdbId ? await getCurrentNetMirrorTitle(fallbackTmdbId, mediaType).catch(() => null) : null;
-      const trailerKey = metadata?.trailerKey || (
-        title.toLowerCase().includes('jailer 2') || id.includes('1234139') ? 'PWuJ5-WiEgY' :
-        title.toLowerCase().includes('toxic') || id.includes('1213243') ? 'EfluEyQ5QIA' :
-        null
-      );
+      const trailerKey = metadata?.trailerKey || null;
 
       if (!trailerKey) {
         return Response.json({ error: `"${title}" is not yet available to stream on NetMirror.` }, { status: 404 });

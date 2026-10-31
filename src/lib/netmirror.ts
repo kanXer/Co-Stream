@@ -625,11 +625,6 @@ export async function resolveCurrentNetMirrorStream(options: {
   if (!candidates.length) {
     try {
       let netId = embed.imdb?.trim() || '';
-      if (!netId && (options.title.toLowerCase().includes('jailer 2') || options.providerId.includes('1234139'))) {
-        netId = 'tt33318732';
-      } else if (!netId && (options.title.toLowerCase().includes('toxic') || options.providerId.includes('1213243'))) {
-        netId = 'tt27530512';
-      }
       if (!netId && options.title) {
         const searchMatches = await searchNetMirror(options.title).catch(() => []);
         if (searchMatches.length > 0) {

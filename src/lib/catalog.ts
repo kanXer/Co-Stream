@@ -90,12 +90,18 @@ function uniqueCatalogItems(items: NetMirrorCatalogItem[]) {
 }
 
 // Titles and IDs known to appear in catalogs but have no playable stream on NetMirror.
-const NON_STREAMABLE_TMDB_IDS = new Set<number>([15226]); // C.I.D. (1998 TV Series)
+const NON_STREAMABLE_TMDB_IDS = new Set<number>([
+  15226,    // C.I.D. (1998 TV Series)
+  1234139,  // Jailer 2 (unreleased trailer placeholder)
+  1213243,  // Toxic (unreleased trailer placeholder)
+]);
 
 export function isNonStreamableItem(item: { tmdbId?: number | string; title?: string }): boolean {
   if (item.tmdbId && NON_STREAMABLE_TMDB_IDS.has(Number(item.tmdbId))) return true;
   if (!item.title) return false;
   const t = item.title.trim().toLowerCase();
+  if (t === 'jailer 2' || t.startsWith('jailer 2') || t.includes('jailer 2')) return true;
+  if (t === 'toxic' || t.startsWith('toxic:')) return true;
   const clean = t.replace(/[^a-z0-9]/g, '');
   if (clean === 'cid' || clean.startsWith('cid')) return true;
   if (/\b(c\.?\s*i\.?\s*d\.?)\b/i.test(t)) return true;
@@ -196,8 +202,10 @@ type HindiTitleDef = {
 };
 
 const HINDI_SPOTLIGHT_FALLBACK: HindiTitleDef[] = [
-  { tmdbId: 1234139, title: 'Jailer 2',              year: '2026', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 8.0, overview: 'The sequel to the blockbuster action thriller Jailer, starring Rajinikanth.' },
-  { tmdbId: 1213243, title: 'Toxic',                  year: '2026', poster: 'https://image.tmdb.org/t/p/w780/5RTd3YCLWbEhbe9OXRuNX3pbT5U.jpg', rating: 8.0, overview: 'A fairy tale for grown-ups starring Yash, directed by Geetu Mohandas.' },
+  { tmdbId: 937020,  title: 'Jailer',                 year: '2023', poster: 'https://image.tmdb.org/t/p/w780/zpHTOdRl7GEPqFsDGqsN6Hi9Ylt.jpg', rating: 7.5, overview: 'A retired jailer goes on a manhunt to find his son’s killers, unleashing his ruthless past.' },
+  { tmdbId: 781732,  title: 'Animal',                 year: '2023', poster: 'https://image.tmdb.org/t/p/w780/hr9rjR3J0xBBKmlJ4n3gHId9ccx.jpg', rating: 7.5, overview: 'A son’s obsessive love for his father triggers a brutal path of bloody vengeance.' },
+  { tmdbId: 872906,  title: 'Jawan',                  year: '2023', poster: 'https://image.tmdb.org/t/p/w780/jFt1gS4BGHlK8xt76Y81Alp4dbt.jpg', rating: 7.6, overview: 'A prison warden driven by personal vengeance recruits inmates to right societal wrongs.' },
+  { tmdbId: 587412,  title: 'K.G.F: Chapter 2',       year: '2022', poster: 'https://image.tmdb.org/t/p/w780/khNVygolU0TxLIDWff5tQlAhZ23.jpg', rating: 7.7, overview: 'Rocky asserts his supremacy over KGF while dealing with adversaries and government forces.' },
   { tmdbId: 1196943, title: 'Chhaava',                year: '2025', poster: 'https://image.tmdb.org/t/p/w185/ubRsrzb6NRW8YhVTJ6jG1kpNvCi.jpg', rating: 7.2, overview: 'Shivaji’s death sparks the Maratha-Mughal conflict as his son Sambhaji leads the resistance.' },
   { tmdbId: 1083241, title: 'Baby John',              year: '2024', poster: 'https://image.tmdb.org/t/p/w185/5Oqsh17dq0cIRFPynPNy5elmyxW.jpg', rating: 6.5, overview: 'An ex-cop living under an alias steps back into violence to protect his young daughter.' },
   { tmdbId: 1257960, title: 'Sikandar',               year: '2025', poster: 'https://image.tmdb.org/t/p/w185/41s42CRXafa3OuRGvCtfYPEBmse.jpg', rating: 6.5, overview: 'Salman Khan stars in this high-voltage action drama directed by AR Murugadoss.' },
