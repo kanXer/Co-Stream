@@ -556,12 +556,12 @@ export function VideoPlayer() {
         abrEwmaFastVoD: 2,
         abrEwmaSlowVoD: 9,
         capLevelToPlayerSize: false,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 60,
-        maxBufferSize: 30 * 1024 * 1024,
-        backBufferLength: 30,
-        maxBufferHole: 1.5,
-        highBufferWatchdogPeriod: 3,
+        maxBufferLength: 90,              // Buffer up to 90 seconds ahead!
+        maxMaxBufferLength: 240,          // Up to 4 minutes ahead!
+        maxBufferSize: 120 * 1024 * 1024, // 120 MB buffer!
+        backBufferLength: 60,             // 1 minute back-buffer for instant rewind
+        maxBufferHole: 0.8,
+        highBufferWatchdogPeriod: 2,
         nudgeOffset: 0.3,
         nudgeMaxRetry: 10,
         manifestLoadingMaxRetry: 6,
@@ -570,9 +570,9 @@ export function VideoPlayer() {
         levelLoadingMaxRetry: 6,
         levelLoadingRetryDelay: 400,
         levelLoadingTimeOut: 15000,
-        fragLoadingMaxRetry: 6,
-        fragLoadingRetryDelay: 400,
-        fragLoadingTimeOut: 20000,
+        fragLoadingMaxRetry: 8,
+        fragLoadingRetryDelay: 500,
+        fragLoadingTimeOut: 25000,
         progressive: true,
       });
       // No level cap — all quality levels (480p, 720p, 1080p) available.
@@ -581,14 +581,51 @@ export function VideoPlayer() {
       // Attach media FIRST, then load source — recommended HLS.js order.
       hlsInstance.attachMedia(video);
       hlsInstance.loadSource(directUrl);
+
+      let initialPlayStarted = false;
+      let bufferedFragsCount = 0;
+
+      const tryStartPlay = () => {
+        if (initialPlayStarted) return;
+        const current = video.currentTime;
+        let ahead = 0;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= current + 0.1 && current <= video.buffered.end(i)) {
+            ahead = video.buffered.end(i) - current;
+            break;
+          }
+        }
+        // Wait until at least 5s of buffer ahead is ready OR at least 2 fragments buffered for smooth playback
+        if (ahead >= 5 || bufferedFragsCount >= 2) {
+          initialPlayStarted = true;
+          reportPlayback({ isLoading: false });
+          video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+        }
+      };
+
+      hlsInstance.on(Hls.Events.FRAG_BUFFERED, () => {
+        bufferedFragsCount += 1;
+        if (!initialPlayStarted) {
+          tryStartPlay();
+        }
+      });
+
       hlsInstance.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
         if (resumeAt > 2 && resumeAt < (video.duration || currentItem.durationSeconds) - 5) video.currentTime = resumeAt;
         pendingSeekRef.current = null;
-        reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: false, error: null });
+        reportPlayback({ duration: video.duration || currentItem.durationSeconds, isLoading: true, error: null });
         video.volume = volume;
         video.playbackRate = playbackSpeed;
-        video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
         episodeDetailsLoaderRef.current?.();
+
+        // Safety fallback timer (2.2s): if fragments are extra large, ensure playback initiates
+        setTimeout(() => {
+          if (!initialPlayStarted) {
+            initialPlayStarted = true;
+            reportPlayback({ isLoading: false });
+            video.play().catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
+          }
+        }, 2200);
 
         if (data.levels && data.levels.length > 1) {
           const parsed = data.levels.map((lvl, index) => ({
@@ -667,9 +704,19 @@ export function VideoPlayer() {
       }, 2000);
     };
     const onCanPlay = () => {
-      if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = null;
-      reportPlayback({ isLoading: false });
+      const current = video.currentTime;
+      let ahead = 0;
+      for (let i = 0; i < video.buffered.length; i++) {
+        if (video.buffered.start(i) <= current + 0.1 && current <= video.buffered.end(i)) {
+          ahead = video.buffered.end(i) - current;
+          break;
+        }
+      }
+      if (ahead >= 2 || video.readyState >= 3) {
+        if (stallTimer) clearTimeout(stallTimer);
+        stallTimer = null;
+        reportPlayback({ isLoading: false });
+      }
     };
     const onSeeked = () => {
       if (!seekHoldRef.current.active) return;
