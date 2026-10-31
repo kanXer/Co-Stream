@@ -320,8 +320,6 @@ export function VideoPlayer() {
     }
     if (videoRef.current) {
       videoRef.current.pause();
-      videoRef.current.removeAttribute('src');
-      videoRef.current.load();
     }
     setSource(null);
     setDirectUrl(null);
@@ -665,7 +663,7 @@ export function VideoPlayer() {
           reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be played.' });
         }
       });
-    } else if (isHls) {
+    } else {
       video.src = directUrl;
     }
 
@@ -715,7 +713,7 @@ export function VideoPlayer() {
       if (ahead >= 2 || video.readyState >= 3) {
         if (stallTimer) clearTimeout(stallTimer);
         stallTimer = null;
-        reportPlayback({ isLoading: false });
+        reportPlayback({ isLoading: false, error: null });
       }
     };
     const onSeeked = () => {
@@ -723,6 +721,7 @@ export function VideoPlayer() {
       requestAnimationFrame(() => requestAnimationFrame(() => releaseHeldSeek(video)));
     };
     const onError = () => {
+      if (!directUrl || !video.src) return;
       if (!fallBackQuality()) reportPlayback({ isLoading: false, isPlaying: false, error: 'This video could not be played.' });
     };
 
