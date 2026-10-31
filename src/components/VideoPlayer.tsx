@@ -257,6 +257,14 @@ export function VideoPlayer() {
   const episodeDetailsLoaderRef = useRef<(() => void) | null>(null);
   const episodeDetailsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isScrubbingRef = useRef(false);
+  const keyboardActionsRef = useRef<{
+    toggleFullscreen?: () => void;
+    animatedTogglePlay?: () => void;
+    seekBy?: (delta: number) => void;
+    minimize?: () => void;
+    isExpanded?: boolean;
+    isBrowserFullscreen?: boolean;
+  }>({});
   const currentId = currentItem?.id || null;
 
   useEffect(() => {
@@ -933,7 +941,50 @@ export function VideoPlayer() {
     episodeDetailsLoaderRef.current = null;
   }, []);
 
-  if (!currentItem) return null;
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const actions = keyboardActionsRef.current;
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!actions.isExpanded) {
+          setIsExpanded(true);
+          setTimeout(() => {
+            actions.toggleFullscreen?.();
+          }, 60);
+        } else {
+          actions.toggleFullscreen?.();
+        }
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        actions.animatedTogglePlay?.();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        actions.seekBy?.(-10);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        actions.seekBy?.(10);
+      } else if (e.key === 'Escape' && actions.isExpanded && !actions.isBrowserFullscreen) {
+        e.preventDefault();
+        actions.minimize?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsExpanded]);
+
+  if (!currentItem) {
+    keyboardActionsRef.current = {};
+    return null;
+  }
 
   const saved = isWatchlisted(currentItem.id);
   const activePosition = scrubbingTime ?? currentTime;
@@ -1434,45 +1485,14 @@ export function VideoPlayer() {
     }
   };
 
-  useEffect(() => {
-    if (!currentItem) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      if (
-        activeEl &&
-        (activeEl.tagName === 'INPUT' ||
-          activeEl.tagName === 'TEXTAREA' ||
-          (activeEl as HTMLElement).isContentEditable)
-      ) {
-        return;
-      }
-      if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        if (!isExpanded) {
-          setIsExpanded(true);
-          setTimeout(() => {
-            toggleFullscreen();
-          }, 60);
-        } else {
-          toggleFullscreen();
-        }
-      } else if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault();
-        animatedTogglePlay();
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        seekBy(-10);
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        seekBy(10);
-      } else if (e.key === 'Escape' && isExpanded && !isBrowserFullscreen) {
-        e.preventDefault();
-        minimize();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentItem, isExpanded, isBrowserFullscreen, toggleFullscreen, animatedTogglePlay, seekBy, minimize, setIsExpanded]);
+  keyboardActionsRef.current = {
+    toggleFullscreen,
+    animatedTogglePlay,
+    seekBy,
+    minimize,
+    isExpanded,
+    isBrowserFullscreen,
+  };
 
   const contextSubtitle = [
     isSeries && currentItem.selectedSeason ? `S${currentItem.selectedSeason} · E${currentItem.selectedEpisode || 1}` : null,
