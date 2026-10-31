@@ -254,6 +254,7 @@ export function VideoPlayer() {
   const seekHoldRef = useRef({ active: false, resume: false });
   const episodeDetailsLoaderRef = useRef<(() => void) | null>(null);
   const episodeDetailsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isScrubbingRef = useRef(false);
   const currentId = currentItem?.id || null;
 
   useEffect(() => {
@@ -1242,8 +1243,6 @@ export function VideoPlayer() {
       }
     }, 330);
   };
-
-  const isScrubbingRef = useRef(false);
 
   const calculateScrubTarget = (clientX: number) => {
     const el = scrubberRef.current;

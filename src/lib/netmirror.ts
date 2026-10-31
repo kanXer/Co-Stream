@@ -154,7 +154,7 @@ export type NetMirrorSeasonMetadata = {
   episodes?: NetMirrorEpisodeMetadata[];
 };
 
-const CURRENT_API_ORIGIN = 'https://net27.cc';
+const CURRENT_API_ORIGIN = 'https://net79.cc';
 
 const HOSTS = [
   'https://mobiledetect.app',
