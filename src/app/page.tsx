@@ -379,11 +379,7 @@ export default function HomePage() {
                   <div className="flex items-center gap-2.5 mt-4 text-xs font-bold text-white/70"><span>{heroItem.year}</span>{heroItem.rating > 0 && <><span>•</span><span className="inline-flex items-center gap-1 text-amber-300"><Star size={12} className="fill-current" />{heroItem.rating.toFixed(1)}</span></>}<span>•</span><span>{heroItem.mediaType === 'tv' ? 'Series' : 'Movie'}</span></div>
                   {heroItem.overview && <p className="mt-4 text-sm leading-6 text-white/65 line-clamp-3 max-w-xl">{heroItem.overview}</p>}
                   <div className="flex flex-wrap gap-2.5 mt-6">
-                    {heroItem.playback ? (
-                      <button onClick={() => playFrom(heroItem, featuredQueue)} className="hero-primary"><Play size={18} className="fill-current" />Play now</button>
-                    ) : (
-                      <button onClick={() => openItem(heroItem)} className="hero-primary"><Film size={18} />More Info</button>
-                    )}
+                    <button onClick={() => openItem(heroItem)} className="hero-primary"><Play size={18} className="fill-current" />Play now</button>
                     <button onClick={() => openItem(heroItem)} className="hero-secondary"><Film size={17} />Details</button>
                   </div>
                 </div>

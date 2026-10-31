@@ -13,7 +13,48 @@ import {
 import { isStreamingPlatformId, platformLabel, type StreamingPlatformId } from '@/lib/platforms';
 import type { CatalogPayload, HomeSection, MediaDetails, MediaItem, MediaType } from '@/types';
 
+// Genre IDs used by NetMirror discover (TMDB genre IDs)
+const GENRE_SECTIONS: Array<{ genre: string; title: string; subtitle: string; type: 'movie' | 'tv' | 'both' }> = [
+  { genre: 'Action',          title: '💥 Action Blockbusters',        subtitle: 'High-octane movies & shows',             type: 'movie' },
+  { genre: 'Comedy',          title: '😂 Comedy Hits',                subtitle: 'Laugh-out-loud picks',                   type: 'movie' },
+  { genre: 'Thriller',        title: '🔪 Thrillers & Suspense',       subtitle: 'Edge-of-your-seat drama',                type: 'both'  },
+  { genre: 'Romance',         title: '💕 Romance & Drama',            subtitle: 'Love stories you can\'t miss',           type: 'both'  },
+  { genre: 'Horror',          title: '👻 Horror & Dark',              subtitle: 'Spine-chilling watch list',              type: 'both'  },
+  { genre: 'Animation',       title: '🎨 Animation & Family',         subtitle: 'For every age group',                   type: 'both'  },
+  { genre: 'Science Fiction', title: '🚀 Sci-Fi & Fantasy',           subtitle: 'Beyond imagination',                    type: 'both'  },
+  { genre: 'Documentary',     title: '🎥 Documentaries',              subtitle: 'True stories & real world',             type: 'both'  },
+  { genre: 'Crime',           title: '🕵️ Crime & Mystery',            subtitle: 'Whodunit and heist dramas',             type: 'both'  },
+  { genre: 'Family',          title: '👨‍👩‍👧 Family Watch',              subtitle: 'Movies everyone can enjoy',             type: 'movie' },
+];
+
 export const isTmdbConfigured = false;
+
+// ─── Genre section definitions ───────────────────────────────────────────────
+const GENRE_SECTIONS_MOVIE: Array<{ genre: string; title: string; subtitle: string }> = [
+  { genre: 'Action',          title: '💥 Action Blockbusters',   subtitle: 'High-octane action movies'          },
+  { genre: 'Comedy',          title: '😂 Comedy Hits',           subtitle: 'Laugh-out-loud picks'               },
+  { genre: 'Thriller',        title: '🔪 Thrillers & Suspense',  subtitle: 'Edge-of-your-seat movies'           },
+  { genre: 'Romance',         title: '💕 Romance & Drama',       subtitle: 'Love stories you can\'t miss'       },
+  { genre: 'Horror',          title: '👻 Horror & Dark',         subtitle: 'Spine-chilling movies'              },
+  { genre: 'Science Fiction', title: '🚀 Sci-Fi & Fantasy',      subtitle: 'Beyond imagination films'           },
+  { genre: 'Crime',           title: '🕵️ Crime & Heist',         subtitle: 'Whodunit and heist dramas'          },
+  { genre: 'Animation',       title: '🎨 Animation & Family',    subtitle: 'Animated movies for all ages'       },
+  { genre: 'Documentary',     title: '🎥 Documentaries',         subtitle: 'True stories & real world'          },
+  { genre: 'Family',          title: '👨‍👩‍👧 Family Watch',         subtitle: 'Perfect for the whole family'       },
+];
+
+const GENRE_SECTIONS_TV: Array<{ genre: string; title: string; subtitle: string }> = [
+  { genre: 'Action',          title: '💥 Action Web Series',     subtitle: 'Thrilling action shows'             },
+  { genre: 'Thriller',        title: '🔪 Thriller Series',       subtitle: 'Suspenseful binge-worthy shows'     },
+  { genre: 'Crime',           title: '🕵️ Crime Series',          subtitle: 'Crime dramas & investigations'      },
+  { genre: 'Romance',         title: '💕 Romance Series',        subtitle: 'Romantic dramas to binge'           },
+  { genre: 'Horror',          title: '👻 Horror Series',         subtitle: 'Dark & scary web shows'             },
+  { genre: 'Science Fiction', title: '🚀 Sci-Fi Series',         subtitle: 'Futuristic & fantasy shows'         },
+  { genre: 'Documentary',     title: '🎥 Documentary Series',    subtitle: 'Real stories told brilliantly'      },
+  { genre: 'Animation',       title: '🎨 Animated Series',       subtitle: 'Animated shows for all ages'        },
+  { genre: 'Comedy',          title: '😂 Comedy Series',         subtitle: 'Funny and feel-good shows'          },
+  { genre: 'Family',          title: '👨‍👩‍👧 Family Series',        subtitle: 'Shows for the whole family'         },
+];
 
 function proxiedImage(url?: string | null) {
   return url ? proxiedMediaPath(url) : null;
@@ -46,6 +87,11 @@ function uniqueCatalogItems(items: NetMirrorCatalogItem[]) {
     seen.add(key);
     return true;
   });
+}
+
+/** Like uniqueCatalogItems but also excludes items explicitly marked as non-streamable. */
+function streamableCatalogItems(items: NetMirrorCatalogItem[]) {
+  return uniqueCatalogItems(items).filter((item) => item.streamable !== false);
 }
 
 async function fillHindiAudioTitles(
@@ -203,9 +249,9 @@ async function getPlatformHindiRows(platform: StreamingPlatformId, region: strin
   const platformMovies = movieResult.status === 'fulfilled' ? movieResult.value : [];
   const platformSeries = seriesResult.status === 'fulfilled' ? seriesResult.value : [];
   const hindiMovieRails = curated.filter((rail) => /hindi|bollywood|indian/i.test(rail.title));
-  const curatedMovies = uniqueCatalogItems(hindiMovieRails.flatMap((rail) => rail.items).filter((item) => item.type === 'movie'));
-  const movies = await fillHindiAudioTitles(curatedMovies, platformMovies, 'movie');
-  const series = platformSeries.slice(0, 10);
+  const curatedMovies = streamableCatalogItems(hindiMovieRails.flatMap((rail) => rail.items).filter((item) => item.type === 'movie'));
+  const movies = await fillHindiAudioTitles(curatedMovies, streamableCatalogItems(platformMovies), 'movie');
+  const series = streamableCatalogItems(platformSeries).slice(0, 10);
   const result = { movies, series };
 
   if (platformHindiCache.size > 100) platformHindiCache.clear();
@@ -241,13 +287,13 @@ export async function getHomeCatalog(
           id: `top10-hindi-${platform}-movie`,
           title: `Top 10 Hindi Movies on ${platformLabel(platform)}`,
           subtitle: 'Trending movies with Hindi audio',
-          items: movies.map((item) => mapCurrentItem(item)),
+          items: streamableCatalogItems(movies).map((item) => mapCurrentItem(item)),
         },
         {
           id: `top10-hindi-${platform}-tv`,
           title: `Top 10 Hindi Web Series on ${platformLabel(platform)}`,
           subtitle: 'Trending Indian and Hindi series',
-          items: series.map((item) => mapCurrentItem(item)),
+          items: streamableCatalogItems(series).map((item) => mapCurrentItem(item)),
         },
       ]));
       const payload: CatalogPayload = { mode: 'netmirror', sections: sections.filter((section) => section.items.length > 0), spotlight };
@@ -258,7 +304,14 @@ export async function getHomeCatalog(
 
     const mediaType = view === 'tv' ? 'tv' : 'movie';
     const currentYear = new Date().getUTCFullYear();
-    const requests = [
+    const genreSections = mediaType === 'movie' ? GENRE_SECTIONS_MOVIE : GENRE_SECTIONS_TV;
+
+    // Parallel fetches: latest + platform top10s + genre discovers + year-based
+    const [
+      latestResult,
+      ...restResults
+    ] = await Promise.allSettled([
+      // 1. Latest/recently updated
       getCurrentNetMirrorHome().then((rails) => {
         const wanted = mediaType === 'tv' ? 'popular series' : 'popular movie';
         return rails.find((rail) => rail.title.toLowerCase().includes(wanted))?.items || [];
@@ -269,34 +322,103 @@ export async function getHomeCatalog(
           yearFrom: Math.max(1900, currentYear - 1),
           yearTo: currentYear,
         })),
+      // 2. Platform top-10s
       ...platforms.map((platform) => discoverCurrentNetMirror({
         type: mediaType,
         region,
         platform,
         sort: 'popularity',
       })),
-    ];
-    const results = await Promise.allSettled(requests);
-    const latest = results[0].status === 'fulfilled' ? results[0].value : [];
-    const sections: HomeSection[] = [{
-      id: `latest-${mediaType}`,
-      title: mediaType === 'tv' ? 'Latest Updated Web Series' : 'Latest Updated Movies',
-      subtitle: mediaType === 'tv' ? 'Fresh seasons and recently updated shows' : 'Recently added and updated',
-      items: latest.slice(0, 20).map((item) => mapCurrentItem(
-        item,
-        item.tmdbId > 0 ? undefined : `subject:${item.subjectId}`,
+      // 3. This year's releases (by rating)
+      discoverCurrentNetMirror({ type: mediaType, region, sort: 'rating', yearFrom: currentYear, yearTo: currentYear + 1 }),
+      // 4. Last year's best
+      discoverCurrentNetMirror({ type: mediaType, region, sort: 'rating', yearFrom: currentYear - 1, yearTo: currentYear }),
+      // 5. All-time popular
+      discoverCurrentNetMirror({ type: mediaType, region, sort: 'popularity' }),
+      // 6–15. Genre searches
+      ...genreSections.map((g) => searchCurrentNetMirror(g.genre).then((items) =>
+        items.filter((item) => item.type === mediaType)
       )),
-    }];
+    ]);
 
-    platforms.forEach((platform, index) => {
-      const result = results[index + 1];
-      const items = result?.status === 'fulfilled' ? result.value : [];
+    const latest = latestResult.status === 'fulfilled' ? latestResult.value : [];
+    const platformResults = restResults.slice(0, platforms.length);
+    const thisYearResult = restResults[platforms.length];
+    const lastYearResult = restResults[platforms.length + 1];
+    const popularResult = restResults[platforms.length + 2];
+    const thisYearItems = thisYearResult?.status === 'fulfilled' ? thisYearResult.value : [];
+    const lastYearItems = lastYearResult?.status === 'fulfilled' ? lastYearResult.value : [];
+    const popularItems = popularResult?.status === 'fulfilled' ? popularResult.value : [];
+    const genreResults = restResults.slice(platforms.length + 3);
+
+    const sections: HomeSection[] = [];
+
+    // Section 1: Latest updated
+    if (latest.length) {
       sections.push({
-        id: `top10-${platform}-${mediaType}`,
-        title: `Top 10 on ${platformLabel(platform)}`,
-        subtitle: mediaType === 'tv' ? 'Popular web series right now' : 'Popular movies right now',
-        items: items.slice(0, 10).map((item) => mapCurrentItem(item)),
+        id: `latest-${mediaType}`,
+        title: mediaType === 'tv' ? '🆕 Latest Updated Web Series' : '🆕 Latest Updated Movies',
+        subtitle: mediaType === 'tv' ? 'Fresh seasons and recently updated shows' : 'Recently added and updated',
+        items: streamableCatalogItems(latest).slice(0, 20).map((item) => mapCurrentItem(item)),
       });
+    }
+
+    // Section 2: This year's top rated
+    if (thisYearItems.length) {
+      sections.push({
+        id: `top-rated-${currentYear}-${mediaType}`,
+        title: mediaType === 'tv' ? `⭐ Best Series of ${currentYear}` : `⭐ Best Movies of ${currentYear}`,
+        subtitle: `Highest rated ${mediaType === 'tv' ? 'shows' : 'films'} of the year`,
+        items: streamableCatalogItems(thisYearItems).slice(0, 15).map((item) => mapCurrentItem(item)),
+      });
+    }
+
+    // Section 3: Platform top-10s
+    platforms.forEach((platform, index) => {
+      const result = platformResults[index];
+      const items = result?.status === 'fulfilled' ? result.value : [];
+      if (items.length) {
+        sections.push({
+          id: `top10-${platform}-${mediaType}`,
+          title: `🏆 Top 10 on ${platformLabel(platform)}`,
+          subtitle: mediaType === 'tv' ? `Popular ${platformLabel(platform)} web series right now` : `Popular ${platformLabel(platform)} movies right now`,
+          items: streamableCatalogItems(items).slice(0, 10).map((item) => mapCurrentItem(item)),
+        });
+      }
+    });
+
+    // Section 4: Last year's best
+    if (lastYearItems.length) {
+      sections.push({
+        id: `top-rated-${currentYear - 1}-${mediaType}`,
+        title: mediaType === 'tv' ? `🎬 Best Series of ${currentYear - 1}` : `🎬 Best Movies of ${currentYear - 1}`,
+        subtitle: `Top rated ${mediaType === 'tv' ? 'shows' : 'films'} from last year`,
+        items: streamableCatalogItems(lastYearItems).slice(0, 15).map((item) => mapCurrentItem(item)),
+      });
+    }
+
+    // Section 5: All-time popular
+    if (popularItems.length) {
+      sections.push({
+        id: `popular-all-${mediaType}`,
+        title: mediaType === 'tv' ? '🔥 Most Popular Web Series' : '🔥 Most Popular Movies',
+        subtitle: 'All-time fan favourites',
+        items: streamableCatalogItems(popularItems).slice(0, 20).map((item) => mapCurrentItem(item)),
+      });
+    }
+
+    // Sections 6–15: Genre-wise
+    genreSections.forEach((genreDef, index) => {
+      const result = genreResults[index];
+      const items = result?.status === 'fulfilled' ? result.value : [];
+      if (items.length >= 4) {
+        sections.push({
+          id: `genre-${genreDef.genre.toLowerCase().replace(/\s+/g, '-')}-${mediaType}`,
+          title: genreDef.title,
+          subtitle: genreDef.subtitle,
+          items: streamableCatalogItems(items).slice(0, 15).map((item) => mapCurrentItem(item)),
+        });
+      }
     });
 
     const payload: CatalogPayload = {
