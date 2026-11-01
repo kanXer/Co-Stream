@@ -2540,10 +2540,12 @@ export function VideoPlayer() {
                   animatedTogglePlay();
                 }
               }}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
               className="w-10 h-10 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 shadow-md"
               title={isPlaying ? "Pause" : "Play"}
             >
-              {isLoading ? (
+              {switchingSource ? (
                 <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
               ) : isPlaying ? (
                 <Pause size={18} className="fill-current" />
