@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: all `dark:` utilities must follow the app's `.dark`
+   class on <html> (toggled by the in-app theme switch), NOT the OS
+   prefers-color-scheme. Without this, a phone set to dark keeps white-on-white
+   elements in the app's light theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --bg: #f2f6f4;
   --panel: #ffffff;
