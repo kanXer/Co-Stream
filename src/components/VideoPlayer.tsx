@@ -913,7 +913,7 @@ export function VideoPlayer() {
       reportPlayback({ isLoading: true });
       if (stallTimer) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        if (video.readyState < 3 && !video.paused) {
+        if (!video.paused) {
           if (hlsRef.current) {
             try {
               hlsRef.current.startLoad();
@@ -924,11 +924,12 @@ export function VideoPlayer() {
             }
           } else {
             try {
-              video.currentTime = video.currentTime + 0.01;
+              // Soft kick forward to exit buffer deadlocks on stalled segments
+              video.currentTime = video.currentTime + 0.1;
             } catch {}
           }
         }
-      }, 3000);
+      }, 2500);
     };
     const onPlaying = () => {
       if (stallTimer) clearTimeout(stallTimer);
@@ -956,11 +957,12 @@ export function VideoPlayer() {
       if (!seekHoldRef.current.active) return;
       requestAnimationFrame(() => requestAnimationFrame(() => releaseHeldSeek(video)));
     };
-    const onError = () => {
+    const onError = (e?: React.SyntheticEvent<HTMLVideoElement, Event> | Event) => {
       if (!directUrl || !video.src) return;
       setIsBuffering(false);
       const mediaErr = video.error;
-      if (mediaErr && (mediaErr.code === 2 || mediaErr.code === 3)) {
+      console.warn('Native video playback error encountered:', mediaErr, e);
+      if (mediaErr && (mediaErr.code === 2 || mediaErr.code === 3 || mediaErr.code === 4)) {
         if (nativeRetryCountRef.current < 3) {
           nativeRetryCountRef.current += 1;
           const resumeTime = video.currentTime || 0;
@@ -975,7 +977,13 @@ export function VideoPlayer() {
           return;
         }
       }
-      if (!fallBackQuality()) reportPlayback({ isLoading: false, isPlaying: false, error: 'This video could not be played.' });
+      if (!fallBackQuality()) {
+        reportPlayback({
+          isLoading: false,
+          isPlaying: false,
+          error: 'This video stream encountered a playback error or network block. Try selecting a different quality or server.',
+        });
+      }
     };
 
     if (!isHls) {
@@ -1867,6 +1875,21 @@ export function VideoPlayer() {
                     controls={false}
                     preload="metadata"
                     crossOrigin="anonymous"
+                    onWaiting={() => {
+                      if (!seekHoldRef.current.active) setIsBuffering(true);
+                    }}
+                    onPlaying={() => {
+                      setIsBuffering(false);
+                      reportPlayback({ isPlaying: true, isLoading: false, error: null });
+                    }}
+                    onError={() => {
+                      setIsBuffering(false);
+                      reportPlayback({
+                        isLoading: false,
+                        isPlaying: false,
+                        error: 'This video stream encountered a network error or format restriction.',
+                      });
+                    }}
                     style={{
                       filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
                     }}

@@ -69,22 +69,22 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
           <button
             type="button"
             onClick={onToggleWatchlist}
-            className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border ${
+            className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border cursor-pointer ${
               saved
                 ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
-                : 'bg-white/10 hover:bg-white/15 text-white border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)]'
+                : 'bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)]'
             }`}
             title={saved ? 'Remove from Watchlist' : 'Add to Watchlist'}
           >
-            <Bookmark size={20} strokeWidth={2.2} className={saved ? 'fill-current text-[#7fffd2]' : 'text-white'} />
+            <Bookmark size={20} strokeWidth={2.2} className={saved ? 'fill-current text-[#7fffd2]' : 'text-current'} />
           </button>
           <button
             type="button"
             onClick={onOfflineAction}
-            className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border ${
+            className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border cursor-pointer ${
               isDownloaded
                 ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
-                : 'bg-white/10 hover:bg-white/15 text-white border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)]'
+                : 'bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)]'
             }`}
             title={isDownloaded ? 'Saved offline' : isDownloading ? 'Downloading...' : 'Save offline'}
           >
@@ -93,27 +93,27 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
             ) : isDownloading ? (
               <span className="w-5 h-5 rounded-full border-2 border-[#7fffd2] border-t-transparent animate-spin" />
             ) : (
-              <Download size={20} strokeWidth={2.2} className="text-white" />
+              <Download size={20} strokeWidth={2.2} className="text-current" />
             )}
           </button>
           <button
             type="button"
             onClick={onShare}
-            className="h-12 rounded-2xl flex items-center justify-center bg-white/10 hover:bg-white/15 text-white border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95"
+            className="h-12 rounded-2xl flex items-center justify-center bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95 cursor-pointer"
             title="Share title"
           >
-            <Share2 size={20} strokeWidth={2.2} className="text-white" />
+            <Share2 size={20} strokeWidth={2.2} className="text-current" />
           </button>
           <button
             type="button"
             onClick={onCycleTheme}
-            className="h-12 rounded-2xl flex items-center justify-center bg-white/10 hover:bg-white/15 text-white border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95"
+            className="h-12 rounded-2xl flex items-center justify-center bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)] transition-all duration-200 active:scale-95 cursor-pointer"
             title="Toggle theme"
           >
             {themeMode === 'DARK' ? (
-              <Sun size={20} strokeWidth={2.2} className="text-white" />
+              <Sun size={20} strokeWidth={2.2} className="text-current" />
             ) : (
-              <Moon size={20} strokeWidth={2.2} className="text-white" />
+              <Moon size={20} strokeWidth={2.2} className="text-current" />
             )}
           </button>
         </div>
