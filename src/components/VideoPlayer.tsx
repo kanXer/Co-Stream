@@ -895,10 +895,10 @@ export function VideoPlayer() {
         startLevel: 0,
         startPosition: resumeAt > 2 ? resumeAt : -1,
         // Keep healthy media ahead for smooth playback without stalls.
-        // 45s min buffer and 90s max buffer gives great headroom against network hiccups.
-        maxBufferLength: 45,
-        maxMaxBufferLength: 90,
-        maxBufferSize: 64 * 1024 * 1024,
+        // 60s min buffer and 120s max buffer gives great headroom against network hiccups without exceeding mobile browser memory quotas.
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        maxBufferSize: 80 * 1024 * 1024,
         backBufferLength: 30,
         maxBufferHole: 0.5,
         nudgeMaxRetry: 10,
