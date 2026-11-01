@@ -27,8 +27,6 @@ export function MediaCard({
   return (
     <article
       className="media-card group"
-      onPointerEnter={() => prefetchNetMirrorPlayback(item)}
-      onFocusCapture={() => prefetchNetMirrorPlayback(item)}
       onTouchStart={() => prefetchNetMirrorPlayback(item)}
     >
       <div
@@ -93,7 +91,7 @@ export function MediaRow({ item, onOpen, onPlay }: { item: MediaItem; onOpen: ()
   const { isWatchlisted, toggleWatchlist } = useStream();
   const saved = isWatchlisted(item.id);
   return (
-    <div onClick={onOpen} onPointerEnter={() => prefetchNetMirrorPlayback(item)} onTouchStart={() => prefetchNetMirrorPlayback(item)} className="flex items-center gap-3 p-2 rounded-2xl border border-transparent hover:border-[var(--line)] hover:bg-[var(--panel)] cursor-pointer transition">
+    <div onClick={onOpen} onTouchStart={() => prefetchNetMirrorPlayback(item)} className="flex items-center gap-3 p-2 rounded-2xl border border-transparent hover:border-[var(--line)] hover:bg-[var(--panel)] cursor-pointer transition">
       <div className="relative w-16 h-20 rounded-xl overflow-hidden bg-[var(--panel)] shrink-0">
         {item.posterUrl ? <Image src={item.posterUrl} alt={item.title} fill sizes="64px" className="object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Film size={18} /></div>}
       </div>

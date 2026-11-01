@@ -8,12 +8,11 @@ export function proxiedMediaPath(target: string) {
   return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
 }
 
-// Verified against the live CDNs: NetMirror's media hosts (*.top with the
-// /files/<id>/... layout) serve every segment with `Access-Control-Allow-Origin: *`
-// and byte-range support, so the browser can fetch them directly — exactly how
-// the Android app streams. Manifests still go through the proxy (they need URI
-// rewriting); only leaf media segments go direct. This removes the Vercel
-// lambda hop that throttled throughput and caused stutter/heavy buffering.
+// Some NetMirror host aliases fail browser CORS even though their segments are
+// reachable from the server proxy. Sending those directly makes the browser
+// discard one request and then fetch the same segment again through the proxy,
+// which can trigger upstream rate limits. Keep direct fetches only for the
+// aliases verified to support browser CORS.
 export function directCdnSegmentUrl(target: string): string | null {
   if (target.startsWith('synthetic:')) return null;
   try {
@@ -22,6 +21,7 @@ export function directCdnSegmentUrl(target: string): string | null {
     const host = url.hostname.toLowerCase();
     const path = url.pathname.toLowerCase();
     if (!host.endsWith('.top')) return null;
+    if (/^makhi\d*\.top$/.test(host) || /^s\d+\.nm-cdn\d+\.top$/.test(host)) return null;
     if (!/\/files\/[a-z0-9._-]+\//i.test(path)) return null;
     if (!/\.(ts|js|woff2|jpg|jpeg)$/i.test(path)) return null;
     return url.toString();

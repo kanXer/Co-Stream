@@ -77,7 +77,7 @@ export const PlayerSettingsModal = React.memo(function PlayerSettingsModal({
   return (
     <div
       ref={containerRef}
-      className="player-controls-menu pointer-events-auto absolute right-[max(0.75rem,env(safe-area-inset-right))] top-[max(3.8rem,calc(env(safe-area-inset-top)+3rem))] w-72 sm:w-80 max-h-[75%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0e1315]/95 p-3 shadow-2xl backdrop-blur-2xl z-40 text-white select-none overscroll-contain touch-pan-y"
+      className="player-controls-menu pointer-events-auto absolute right-[max(0.75rem,max(env(safe-area-inset-left),env(safe-area-inset-right)))] top-[max(3.8rem,calc(env(safe-area-inset-top)+3rem))] w-72 sm:w-80 max-h-[75%] overflow-y-auto rounded-2xl border border-white/15 bg-[#0e1315]/95 p-3 shadow-2xl backdrop-blur-2xl z-40 text-white select-none overscroll-contain touch-pan-y"
       style={{
         touchAction: 'pan-y',
         overscrollBehavior: 'contain',

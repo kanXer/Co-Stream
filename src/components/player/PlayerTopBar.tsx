@@ -64,7 +64,7 @@ export const PlayerTopBar = React.memo(function PlayerTopBar({
   return (
     <>
       <div
-        className={`player-controls-top player-gpu-layer absolute inset-x-0 top-0 pt-[max(0.75rem,env(safe-area-inset-top))] px-[max(1rem,max(env(safe-area-inset-left),env(safe-area-inset-right)))] pb-10 bg-gradient-to-b from-black/90 via-black/45 to-transparent flex flex-wrap items-center justify-between gap-x-2 gap-y-1 max-w-full transition-opacity duration-200 ${
+        className={`player-controls-top player-gpu-layer absolute inset-x-0 top-0 pt-[max(0.75rem,env(safe-area-inset-top))] px-[max(1.25rem,max(env(safe-area-inset-left),env(safe-area-inset-right)))] pb-10 bg-gradient-to-b from-black/90 via-black/45 to-transparent flex flex-wrap items-center justify-between gap-x-2 gap-y-1 max-w-full transition-opacity duration-200 ${
           isInteractive ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >

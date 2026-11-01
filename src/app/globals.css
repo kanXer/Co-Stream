@@ -421,16 +421,16 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .player-stage:fullscreen .player-controls-top,
 .player-stage:-webkit-full-screen .player-controls-top,
 .player-stage.fullscreen-portrait-rotated .player-controls-top {
-  padding-left: calc(1.25rem + env(safe-area-inset-left, 0px)) !important;
-  padding-right: calc(1.25rem + env(safe-area-inset-right, 0px)) !important;
+  padding-left: calc(1.25rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
+  padding-right: calc(1.25rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
   padding-top: calc(1rem + env(safe-area-inset-top, 0px)) !important;
 }
 
 .player-stage:fullscreen .player-bottom-bar,
 .player-stage:-webkit-full-screen .player-bottom-bar,
 .player-stage.fullscreen-portrait-rotated .player-bottom-bar {
-  padding-left: calc(1.25rem + env(safe-area-inset-left, 0px)) !important;
-  padding-right: calc(1.25rem + env(safe-area-inset-right, 0px)) !important;
+  padding-left: calc(1.25rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
+  padding-right: calc(1.25rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
   padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
 }
 
@@ -438,7 +438,29 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .player-stage:-webkit-full-screen .player-controls-menu,
 .player-stage.fullscreen-portrait-rotated .player-controls-menu {
   top: calc(3.5rem + env(safe-area-inset-top, 0px));
-  right: calc(.75rem + env(safe-area-inset-right, 0px));
+  right: calc(.75rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)));
+  max-height: min(72%, calc(100% - 4.25rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+}
+
+/* The portrait fallback rotates the whole player 90deg. Map the device's
+   portrait safe areas onto the player's rotated edges so controls clear the
+   notch and home indicator on phones without orientation-lock support.
+   Using max(top, bottom) ensures symmetrical balance on both sides so controls don't drift. */
+.player-stage.fullscreen-portrait-rotated .player-controls-top {
+  padding-left: calc(1.25rem + max(env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px))) !important;
+  padding-right: calc(1.25rem + max(env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px))) !important;
+  padding-top: calc(1rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
+}
+
+.player-stage.fullscreen-portrait-rotated .player-bottom-bar {
+  padding-left: calc(1.25rem + max(env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px))) !important;
+  padding-right: calc(1.25rem + max(env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px))) !important;
+  padding-bottom: calc(1rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px))) !important;
+}
+
+.player-stage.fullscreen-portrait-rotated .player-controls-menu {
+  top: calc(3.5rem + max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)));
+  right: calc(.75rem + max(env(safe-area-inset-top, 0px), env(safe-area-inset-bottom, 0px)));
   max-height: min(72%, calc(100% - 4.25rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
 }
 .player-seek-feedback { animation: playerSeekFeedback .65s cubic-bezier(.2,.8,.2,1) both; }

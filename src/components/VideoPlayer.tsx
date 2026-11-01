@@ -211,6 +211,26 @@ function unlockScreenOrientation() {
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+function rateLimitRetryDelay(networkDetails: unknown) {
+  const response = networkDetails as {
+    getResponseHeader?: (name: string) => string | null;
+    response?: { headers?: { get?: (name: string) => string | null } };
+  } | null;
+  let retryAfter: string | null = null;
+  try {
+    retryAfter = response?.getResponseHeader?.('Retry-After')
+      || response?.response?.headers?.get?.('Retry-After')
+      || null;
+  } catch {}
+  if (!retryAfter) return 15_000;
+
+  const seconds = Number(retryAfter);
+  const delay = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(retryAfter) - Date.now();
+  return Number.isFinite(delay) ? Math.max(1_000, Math.min(60_000, delay)) : 15_000;
+}
+
 // Fragment loader with a one-time same-origin proxy fallback. Segments stream
 // straight from the CDN (like the Android app); if a direct fetch fails or
 // times out — CDN hiccup or ISP throttling of the segment hosts — the very
@@ -256,16 +276,33 @@ class ProxyFallbackFragmentLoader implements Loader<FragmentLoaderContext> {
     callbacks: LoaderCallbacks<FragmentLoaderContext>,
   ) {
     this.context = context;
+    const fragmentErrorRetry = config.loadPolicy.errorRetry;
+    const proxyConfig: LoaderConfiguration = fragmentErrorRetry
+      ? {
+          ...config,
+          loadPolicy: {
+            ...config.loadPolicy,
+            errorRetry: {
+              ...fragmentErrorRetry,
+              shouldRetry: (retryConfig, retryCount, isTimeout, response, retry) => {
+                if (response?.code === 429) return false;
+                return fragmentErrorRetry.shouldRetry
+                  ? fragmentErrorRetry.shouldRetry(retryConfig, retryCount, isTimeout, response, retry)
+                  : retry;
+              },
+            },
+          },
+        }
+      : config;
     // Do not spend hls.js's default six retries on a dead direct-CDN path
     // before trying our healthy same-origin route. The fallback receives the
-    // original policy (including retries); only the first direct attempt is
-    // deliberately fail-fast.
+    // original policy; only the first direct attempt is deliberately fail-fast.
     const directConfig: LoaderConfiguration = {
-      ...config,
+      ...proxyConfig,
       loadPolicy: {
-        ...config.loadPolicy,
-        maxTimeToFirstByteMs: Math.min(config.loadPolicy.maxTimeToFirstByteMs, 8_000),
-        maxLoadTimeMs: Math.min(config.loadPolicy.maxLoadTimeMs, 30_000),
+        ...proxyConfig.loadPolicy,
+        maxTimeToFirstByteMs: Math.min(proxyConfig.loadPolicy.maxTimeToFirstByteMs, 8_000),
+        maxLoadTimeMs: Math.min(proxyConfig.loadPolicy.maxLoadTimeMs, 30_000),
         timeoutRetry: null,
         errorRetry: null,
       },
@@ -273,12 +310,12 @@ class ProxyFallbackFragmentLoader implements Loader<FragmentLoaderContext> {
     const fallbackCallbacks: LoaderCallbacks<FragmentLoaderContext> = {
       ...callbacks,
       onError: (error, failedContext, networkDetails, stats) => {
-        if (!this.retryThroughProxy(failedContext, config, callbacks)) {
+        if (!this.retryThroughProxy(failedContext, proxyConfig, callbacks)) {
           callbacks.onError(error, failedContext, networkDetails, stats);
         }
       },
       onTimeout: (stats, failedContext, networkDetails) => {
-        if (!this.retryThroughProxy(failedContext, config, callbacks)) {
+        if (!this.retryThroughProxy(failedContext, proxyConfig, callbacks)) {
           callbacks.onTimeout(stats, failedContext, networkDetails);
         }
       },
@@ -857,26 +894,22 @@ export function VideoPlayer() {
         // ABR upgrades only after measuring this viewer's actual CDN speed.
         startLevel: 0,
         startPosition: resumeAt > 2 ? resumeAt : -1,
-        // Mirrors the mobile app's ExoPlayer DefaultLoadControl (PlayerScreen.kt):
-        // minBuffer 60s / maxBuffer 180s / back-buffer 60s so playback starts
-        // sooner after rebuffer and survives network hiccups without stalling.
-        maxBufferLength: 60,
-        maxMaxBufferLength: 180,
-        maxBufferSize: 60 * 1024 * 1024,
-        backBufferLength: 60,
+        // Keep healthy media ahead for smooth playback without stalls.
+        // 45s min buffer and 90s max buffer gives great headroom against network hiccups.
+        maxBufferLength: 45,
+        maxMaxBufferLength: 90,
+        maxBufferSize: 64 * 1024 * 1024,
+        backBufferLength: 30,
         maxBufferHole: 0.5,
         nudgeMaxRetry: 10,
         startFragPrefetch: true,
         progressive: true,
         fLoader: ProxyFallbackFragmentLoader as unknown as typeof Hls.DefaultConfig.fLoader,
         capLevelToPlayerSize: true,
-        // ABR sanity: synthetic NetMirror manifests overstate BANDWIDTH, and
-        // starting too high on a slow link is what reads as "constant
-        // buffering". Begin conservatively, then upgrade only with sustained
-        // headroom so quality does not oscillate around the connection limit.
-        abrEwmaDefaultEstimate: 800_000,
-        abrBandWidthFactor: 0.8,
-        abrBandWidthUpFactor: 0.6,
+        // ABR configuration:
+        abrEwmaDefaultEstimate: 1_200_000,
+        abrBandWidthFactor: 0.85,
+        abrBandWidthUpFactor: 0.7,
       });
       hlsRef.current = hlsInstance;
       hlsInstance.attachMedia(video);
@@ -999,10 +1032,38 @@ export function VideoPlayer() {
       });
 
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
+        const rateLimited = data.response?.code === 429;
+        if (!data.fatal && !rateLimited) return;
         clearBuffering();
 
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          if (rateLimited) {
+            if (networkRetryCountRef.current > 0) {
+              hlsInstance?.stopLoad();
+              reportPlayback({
+                isLoading: false,
+                isPlaying: false,
+                error: 'This stream server is rate-limiting requests. Please try again later.',
+              });
+              return;
+            }
+            networkRetryCountRef.current = 1;
+            const delay = rateLimitRetryDelay(data.networkDetails);
+            reportPlayback({
+              isLoading: false,
+              isPlaying: false,
+              error: `Stream server asked us to slow down. Retrying in ${Math.ceil(delay / 1000)}s…`,
+            });
+            networkRetryTimerRef.current = setTimeout(() => {
+              networkRetryTimerRef.current = null;
+              if (hlsRef.current) {
+                reportPlayback({ isLoading: true, isPlaying: true, error: null });
+                hlsRef.current.startLoad();
+                video.play().catch(() => undefined);
+              }
+            }, delay);
+            return;
+          }
           if (networkRetryCountRef.current < 5) {
             const attempt = networkRetryCountRef.current + 1;
             networkRetryCountRef.current = attempt;

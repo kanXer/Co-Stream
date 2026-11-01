@@ -38,7 +38,6 @@ import {
   isStreamingPlatformId,
   type StreamingPlatformId,
 } from '@/lib/platforms';
-import { prefetchNetMirrorPlayback } from '@/lib/playbackClient';
 import type { CatalogPayload, MediaItem } from '@/types';
 
 type Tab = 'home' | 'movie' | 'tv' | 'search' | 'offline';
@@ -352,13 +351,6 @@ export default function HomePage() {
     return () => clearInterval(timer);
   }, [spotlight.length]);
   const heroItem = spotlight.length > 0 ? spotlight[spotlightIdx] : (catalog?.sections[0]?.items.filter((item) => !isBlockedMediaItem(item))[0] || null);
-  useEffect(() => {
-    // Only prefetch playback for items that are streamable
-    if (!heroItem?.playback) return;
-    const timer = window.setTimeout(() => prefetchNetMirrorPlayback(heroItem), 450);
-    return () => window.clearTimeout(timer);
-  }, [heroItem]);
-
   return (
     <div className={`min-h-screen min-w-0 max-w-full overflow-x-clip text-[var(--text)] ${currentItem ? 'pb-52' : 'pb-28'}`}>
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--bg)]/78 backdrop-blur-2xl">

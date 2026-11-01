@@ -27,27 +27,37 @@ export function resolveNetMirrorPlayback(item: MediaItem) {
   const cached = playbackRequests.get(path);
   if (cached && cached.expires > Date.now()) return cached.promise;
 
+  let cooldownMs = 8_000;
+  let entry: PlaybackRequest | undefined;
   const promise = (async () => {
-    let lastError: Error | null = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const response = await fetch(path);
-        const payload = await response.json() as MediaDetails & { error?: string };
-        if (!response.ok || !payload.playback?.url) {
-          throw new Error(payload.error || 'Could not resolve playback.');
-        }
-        return payload;
-      } catch (err) {
-        lastError = err instanceof Error ? err : new Error('Could not resolve playback.');
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
+    try {
+      const response = await fetch(path);
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const seconds = Number(retryAfter);
+        const retryDateMs = retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
+        cooldownMs = Number.isFinite(seconds)
+          ? Math.max(1_000, Math.min(120_000, seconds * 1000))
+          : Number.isFinite(retryDateMs)
+            ? Math.max(1_000, Math.min(120_000, retryDateMs))
+            : 15_000;
       }
+      const payload = await response.json() as MediaDetails & { error?: string };
+      if (!response.ok || !payload.playback?.url) {
+        throw new Error(payload.error || 'Could not resolve playback.');
+      }
+      return payload;
+    } catch (error) {
+      // Keep failed resolutions briefly so a tap, remount, or Strict Mode
+      // effect cannot immediately repeat the same upstream request.
+      if (entry) entry.expires = Date.now() + cooldownMs;
+      throw error instanceof Error ? error : new Error('Could not resolve playback.');
     }
-    playbackRequests.delete(path);
-    throw lastError || new Error('Could not resolve playback.');
   })();
 
   if (playbackRequests.size > 100) playbackRequests.clear();
-  playbackRequests.set(path, { promise, expires: Date.now() + 45 * 1000 });
+  entry = { promise, expires: Date.now() + 45 * 1000 };
+  playbackRequests.set(path, entry);
   return promise;
 }
 

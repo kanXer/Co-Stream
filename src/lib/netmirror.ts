@@ -1132,6 +1132,17 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
         continue;
       }
 
+      // Check if this stream URL is the dummy 220884 video track or anti-abuse track
+      if (trimmed.includes('/files/220884/') && firstRealAudioUri) {
+        // Extract resolution from trimmed URL or previous line
+        const resMatch = trimmed.match(/(1080p|720p|480p|360p)/i)
+          || (lineIndex > 0 ? lines[lineIndex - 1].match(/RESOLUTION=\d+x(\d+)/i) : null);
+        const res = resMatch ? (resMatch[1].endsWith('p') ? resMatch[1] : `${resMatch[1]}p`) : '720p';
+        const synTarget = `${firstRealAudioUri}${firstRealAudioUri.includes('?') ? '&' : '?'}synthetic_video=${res}`;
+        rewritten.push(proxiedMediaPath(synTarget));
+        continue;
+      }
+
       try {
         const absolute = new URL(trimmed, base).toString();
         if (isAllowedNetMirrorTarget(absolute)) {
