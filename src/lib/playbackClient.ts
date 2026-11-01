@@ -27,18 +27,24 @@ export function resolveNetMirrorPlayback(item: MediaItem) {
   const cached = playbackRequests.get(path);
   if (cached && cached.expires > Date.now()) return cached.promise;
 
-  const promise = fetch(path)
-    .then(async (response) => {
-      const payload = await response.json() as MediaDetails & { error?: string };
-      if (!response.ok || !payload.playback?.url) {
-        throw new Error(payload.error || 'Could not resolve playback.');
+  const promise = (async () => {
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch(path);
+        const payload = await response.json() as MediaDetails & { error?: string };
+        if (!response.ok || !payload.playback?.url) {
+          throw new Error(payload.error || 'Could not resolve playback.');
+        }
+        return payload;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error('Could not resolve playback.');
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
       }
-      return payload;
-    })
-    .catch((error) => {
-      playbackRequests.delete(path);
-      throw error;
-    });
+    }
+    playbackRequests.delete(path);
+    throw lastError || new Error('Could not resolve playback.');
+  })();
 
   if (playbackRequests.size > 100) playbackRequests.clear();
   playbackRequests.set(path, { promise, expires: Date.now() + 45 * 1000 });

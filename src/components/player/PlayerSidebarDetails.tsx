@@ -122,7 +122,7 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
         {relatedItems.length > 0 && (
           <div className="mt-5 pt-4 border-t border-[var(--line)]">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-black tracking-wide text-white">
+              <p className="text-xs font-black tracking-wide text-[var(--text)] dark:text-white">
                 {currentItem.mediaType === 'tv' ? 'Related Series' : 'Related Movies'}
               </p>
               <span className="watch-muted text-[10px] font-bold">Recommended</span>
@@ -132,7 +132,7 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
                 <div
                   key={movie.id}
                   onClick={() => onPlayItem(movie, [movie, ...relatedItems])}
-                  className="group flex items-center gap-3 p-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                  className="group flex items-center gap-3 p-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/[0.06] dark:hover:bg-white/[0.09] border border-[var(--line)]/50 dark:border-white/5 transition-all duration-200 cursor-pointer active:scale-[0.98]"
                 >
                   <div className="watch-poster relative w-12 h-16 rounded-xl overflow-hidden shrink-0 bg-white/5 shadow-md">
                     {movie.posterUrl ? (

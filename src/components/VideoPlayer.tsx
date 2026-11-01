@@ -1837,7 +1837,7 @@ export function VideoPlayer() {
         {isExpanded && background && (
           <div className="watch-backdrop fixed inset-0 pointer-events-none">
             <Image src={background} alt="" fill sizes="100vw" priority className="watch-backdrop-image object-cover" />
-            <div className="watch-backdrop-shade absolute inset-0 bg-black/85" />
+            <div className="watch-backdrop-shade absolute inset-0" />
           </div>
         )}
 
