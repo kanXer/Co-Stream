@@ -252,6 +252,7 @@ export function VideoPlayer() {
   const [playerMenu, setPlayerMenu] = useState<'settings' | 'speed' | 'picture' | 'quality' | 'subtitles' | 'audio' | null>(null);
   const [selectedQuality, setSelectedQuality] = useState('Auto');
   const [selectedSubtitle, setSelectedSubtitle] = useState('off');
+  const [selectedHlsSubtitle, setSelectedHlsSubtitle] = useState<number | 'off'>('off');
   const [selectedAudio, setSelectedAudio] = useState('Original');
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [switchingSource, setSwitchingSource] = useState(false);
@@ -275,6 +276,7 @@ export function VideoPlayer() {
   const [pipSupported, setPipSupported] = useState(false);
   const [hlsLevels, setHlsLevels] = useState<Array<{ id: number; label: string; height: number }>>([]);
   const [hlsAudioTracks, setHlsAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
+  const [hlsSubtitleTracks, setHlsSubtitleTracks] = useState<Array<{ id: number; label: string }>>([]);
   const [isBuffering, setIsBuffering] = useState(false);
   const isHls = Boolean(directUrl && (directUrl.includes('.m3u8') || source?.mimeType?.includes('mpegurl')));
 
@@ -635,6 +637,7 @@ export function VideoPlayer() {
     setSelectedQuality(source?.selectedQuality || source?.label || 'Auto');
     setSelectedAudio(source?.selectedAudio || 'Original');
     setSelectedSubtitle((current) => source?.subtitles?.some((track) => track.id === current) ? current : 'off');
+    setSelectedHlsSubtitle('off');
     setPlayerMenu(null);
   }, [source]);
 
@@ -678,6 +681,9 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
     const apply = () => {
+      // When an HLS-embedded subtitle track is active, hls.js owns the native
+      // text track modes — touching them here would hide the cues.
+      if (selectedHlsSubtitle !== 'off') return;
       const tracks = Array.from(video.textTracks || []);
       tracks.forEach((track, index) => {
         const configured = source?.subtitles?.[index];
@@ -687,7 +693,7 @@ export function VideoPlayer() {
     apply();
     video.addEventListener('loadedmetadata', apply);
     return () => video.removeEventListener('loadedmetadata', apply);
-  }, [selectedSubtitle, source?.subtitles, directUrl]);
+  }, [selectedSubtitle, selectedHlsSubtitle, source?.subtitles, directUrl]);
 
   useEffect(() => {
     if (source?.kind !== 'direct' || !directUrl || !videoRef.current || !currentItem) return;
@@ -845,6 +851,19 @@ export function VideoPlayer() {
           }
         } else {
           setHlsAudioTracks([]);
+        }
+
+        // Embedded HLS subtitle (text) tracks — mirrors the Android ExoPlayer
+        // track-group parsing so streams without side-loaded captions still
+        // expose selectable subtitles.
+        const rawSubs = hlsInstance?.subtitleTracks || [];
+        if (rawSubs.length > 0) {
+          setHlsSubtitleTracks(rawSubs.map((track, index) => ({
+            id: index,
+            label: track.name || track.lang || `Subtitle ${index + 1}`,
+          })));
+        } else {
+          setHlsSubtitleTracks([]);
         }
       });
 
@@ -1187,6 +1206,7 @@ export function VideoPlayer() {
       hlsRef.current = null;
       setHlsLevels([]);
       setHlsAudioTracks([]);
+      setHlsSubtitleTracks([]);
       hlsInstance?.destroy();
       registerController(null);
     };
@@ -2141,7 +2161,19 @@ export function VideoPlayer() {
                       subtitles={source?.subtitles}
                       selectedSubtitle={selectedSubtitle}
                       onSelectSubtitle={(id) => {
+                        // Source-track selection replaces any HLS text track;
+                        // -1 turns the HLS subtitle pipeline off.
+                        if (hlsRef.current) hlsRef.current.subtitleTrack = -1;
+                        setSelectedHlsSubtitle('off');
                         setSelectedSubtitle(id);
+                        setPlayerMenu(null);
+                        revealControls();
+                      }}
+                      hlsSubtitles={hlsSubtitleTracks}
+                      selectedHlsSubtitle={selectedHlsSubtitle}
+                      onSelectHlsSubtitle={(trackId) => {
+                        if (hlsRef.current) hlsRef.current.subtitleTrack = trackId === 'off' ? -1 : trackId;
+                        setSelectedHlsSubtitle(trackId);
                         setPlayerMenu(null);
                         revealControls();
                       }}

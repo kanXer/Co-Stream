@@ -25,6 +25,9 @@ export interface PlayerSettingsModalProps {
   subtitles?: PlaybackSubtitle[];
   selectedSubtitle: string;
   onSelectSubtitle: (id: string) => void;
+  hlsSubtitles: Array<{ id: number; label: string }>;
+  selectedHlsSubtitle: number | 'off';
+  onSelectHlsSubtitle: (trackId: number | 'off') => void;
 }
 
 export const PlayerSettingsModal = React.memo(function PlayerSettingsModal({
@@ -46,6 +49,9 @@ export const PlayerSettingsModal = React.memo(function PlayerSettingsModal({
   subtitles,
   selectedSubtitle,
   onSelectSubtitle,
+  hlsSubtitles,
+  selectedHlsSubtitle,
+  onSelectHlsSubtitle,
 }: PlayerSettingsModalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -287,47 +293,68 @@ export const PlayerSettingsModal = React.memo(function PlayerSettingsModal({
         </div>
       )}
 
-      {/* Section: Subtitles */}
-      {subtitles && subtitles.length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1.5 px-1">Subtitles</p>
-          <div className="space-y-1">
+      {/* Section: Subtitles — always visible, matching the Android player:
+          Off is selectable even when no tracks exist so the option is
+          discoverable, with a hint when the stream publishes none. */}
+      <div>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-white/50 mb-1.5 px-1">Subtitles</p>
+        <div className="space-y-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectSubtitle('off');
+            }}
+            className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+              selectedSubtitle === 'off' && selectedHlsSubtitle === 'off'
+                ? 'bg-[#7fffd2]/15 text-[#7fffd2] border border-[#7fffd2]/30'
+                : 'hover:bg-white/10 text-white/80'
+            }`}
+          >
+            <span>Off</span>
+            {selectedSubtitle === 'off' && selectedHlsSubtitle === 'off' && <Check size={14} className="text-[#7fffd2]" />}
+          </button>
+          {subtitles?.map((track) => (
             <button
               type="button"
+              key={`sub-${track.id}`}
               onClick={(e) => {
                 e.stopPropagation();
-                onSelectSubtitle('off');
+                onSelectSubtitle(track.id);
               }}
               className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
-                selectedSubtitle === 'off'
+                selectedSubtitle === track.id
                   ? 'bg-[#7fffd2]/15 text-[#7fffd2] border border-[#7fffd2]/30'
                   : 'hover:bg-white/10 text-white/80'
               }`}
             >
-              <span>Off</span>
-              {selectedSubtitle === 'off' && <Check size={14} className="text-[#7fffd2]" />}
+              <span>{track.label}</span>
+              {selectedSubtitle === track.id && <Check size={14} className="text-[#7fffd2]" />}
             </button>
-            {subtitles.map((track) => (
-              <button
-                type="button"
-                key={`sub-${track.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectSubtitle(track.id);
-                }}
-                className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
-                  selectedSubtitle === track.id
-                    ? 'bg-[#7fffd2]/15 text-[#7fffd2] border border-[#7fffd2]/30'
-                    : 'hover:bg-white/10 text-white/80'
-                }`}
-              >
-                <span>{track.label}</span>
-                {selectedSubtitle === track.id && <Check size={14} className="text-[#7fffd2]" />}
-              </button>
-            ))}
-          </div>
+          ))}
+          {hlsSubtitles.map((track) => (
+            <button
+              type="button"
+              key={`hlssub-${track.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectHlsSubtitle(track.id);
+              }}
+              className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between text-left transition ${
+                selectedHlsSubtitle === track.id
+                  ? 'bg-[#7fffd2]/15 text-[#7fffd2] border border-[#7fffd2]/30'
+                  : 'hover:bg-white/10 text-white/80'
+              }`}
+            >
+              <span>{track.label}</span>
+              {selectedHlsSubtitle === track.id && <Check size={14} className="text-[#7fffd2]" />}
+            </button>
+          ))}
+          {(!subtitles || subtitles.length === 0) && hlsSubtitles.length === 0 && (
+            <p className="px-2.5 py-1 text-[10px] font-semibold text-white/40">No subtitle tracks published for this stream.</p>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 });
