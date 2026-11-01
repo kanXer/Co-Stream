@@ -76,7 +76,7 @@ export function MediaCard({
         <h3 className="text-[13px] font-black truncate group-hover:text-[var(--accent)] transition-colors">{item.title}</h3>
         <p className="mt-0.5 flex items-center gap-1.5 text-[10px] font-semibold text-[var(--text-muted)] truncate">
           {item.mediaType === 'tv' && item.selectedSeason ? (
-            <span className="text-[#7fffd2] font-bold">
+            <span className="text-[var(--accent)] font-bold">
               S{item.selectedSeason} · E{item.selectedEpisode || 1}
             </span>
           ) : (

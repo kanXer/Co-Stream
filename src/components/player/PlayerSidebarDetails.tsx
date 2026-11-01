@@ -71,27 +71,27 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
             onClick={onToggleWatchlist}
             className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border cursor-pointer ${
               saved
-                ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]/50 shadow-lg'
                 : 'bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)]'
             }`}
             title={saved ? 'Remove from Watchlist' : 'Add to Watchlist'}
           >
-            <Bookmark size={20} strokeWidth={2.2} className={saved ? 'fill-current text-[#7fffd2]' : 'text-current'} />
+            <Bookmark size={20} strokeWidth={2.2} className={saved ? 'fill-current text-[var(--accent)]' : 'text-current'} />
           </button>
           <button
             type="button"
             onClick={onOfflineAction}
             className={`h-12 rounded-2xl flex items-center justify-center transition-all duration-200 active:scale-95 border cursor-pointer ${
               isDownloaded
-                ? 'bg-[#7fffd2]/25 text-[#7fffd2] border-[#7fffd2]/50 shadow-[0_4px_20px_rgba(127,255,210,0.3)]'
+                ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]/50 shadow-lg'
                 : 'bg-black/10 dark:bg-white/10 hover:bg-black/15 dark:hover:bg-white/15 text-[var(--text)] dark:text-white border-[var(--line)] dark:border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.1),inset_0_1px_1px_rgba(255,255,255,0.2)]'
             }`}
             title={isDownloaded ? 'Saved offline' : isDownloading ? 'Downloading...' : 'Save offline'}
           >
             {isDownloaded ? (
-              <Check size={20} strokeWidth={2.5} className="text-[#7fffd2]" />
+              <Check size={20} strokeWidth={2.5} className="text-[var(--accent)]" />
             ) : isDownloading ? (
-              <span className="w-5 h-5 rounded-full border-2 border-[#7fffd2] border-t-transparent animate-spin" />
+              <span className="w-5 h-5 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
             ) : (
               <Download size={20} strokeWidth={2.2} className="text-current" />
             )}
@@ -134,7 +134,7 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
                   onClick={() => onPlayItem(movie, [movie, ...relatedItems])}
                   className="group flex items-center gap-3 p-2 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] hover:bg-black/[0.06] dark:hover:bg-white/[0.09] border border-[var(--line)]/50 dark:border-white/5 transition-all duration-200 cursor-pointer active:scale-[0.98]"
                 >
-                  <div className="watch-poster relative w-12 h-16 rounded-xl overflow-hidden shrink-0 bg-white/5 shadow-md">
+                  <div className="watch-poster relative w-12 h-16 rounded-xl overflow-hidden shrink-0 dark:bg-white/5 shadow-md">
                     {movie.posterUrl ? (
                       <Image
                         src={movie.posterUrl}
@@ -144,18 +144,18 @@ export const PlayerSidebarDetails = React.memo(function PlayerSidebarDetails({
                         className="object-cover transition-transform duration-300 group-hover:scale-105"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[10px] text-white/40">🎬</div>
+                      <div className="w-full h-full flex items-center justify-center text-[10px] text-[var(--text-faint)]">🎬</div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h4 className="text-xs font-bold text-white group-hover:text-[#7fffd2] transition truncate">
+                    <h4 className="text-xs font-bold text-[var(--text)] group-hover:text-[var(--accent)] transition truncate">
                       {movie.title}
                     </h4>
                     <p className="watch-muted text-[10px] mt-0.5 font-medium truncate">
                       {movie.year} {movie.rating ? `• ★ ${Number(movie.rating).toFixed(1)}` : ''}
                     </p>
                   </div>
-                  <span className="w-8 h-8 rounded-full bg-white/10 group-hover:bg-[#7fffd2] group-hover:text-black flex items-center justify-center text-white transition-all duration-200 shrink-0">
+                  <span className="w-8 h-8 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] group-hover:bg-[var(--accent)] group-hover:text-[var(--accent-ink)] flex items-center justify-center transition-all duration-200 shrink-0">
                     <Play size={13} className="fill-current ml-0.5" />
                   </span>
                 </div>

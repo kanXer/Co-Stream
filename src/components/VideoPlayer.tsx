@@ -354,6 +354,20 @@ export function VideoPlayer() {
   }>({});
   const currentId = currentItem?.id || null;
 
+  // Live mirrors read inside stable callbacks. Keeping these out of the playback
+  // engine's dependency array prevents the HLS pipeline from being destroyed and
+  // rebuilt mid-buffer whenever duration/currentItem state updates land.
+  const durationRef = useRef(0);
+  const currentItemRef = useRef<MediaItem | null>(null);
+  const sourceKindRef = useRef<string | null>(null);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+  useEffect(() => {
+    currentItemRef.current = currentItem;
+    sourceKindRef.current = source?.kind ?? null;
+  }, [currentItem, source]);
+
   useEffect(() => {
     setPipSupported(typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled);
   }, []);
@@ -369,8 +383,8 @@ export function VideoPlayer() {
 
   const seekDirectly = useCallback((seconds: number) => {
     const video = videoRef.current;
-    const safeTarget = Math.max(0, Math.min(seconds, duration || seconds));
-    if (source?.kind === 'direct' && video) {
+    const safeTarget = Math.max(0, Math.min(seconds, durationRef.current || seconds));
+    if (sourceKindRef.current === 'direct' && video) {
       if (hlsRef.current) {
         try {
           hlsRef.current.startLoad(safeTarget);
@@ -386,24 +400,26 @@ export function VideoPlayer() {
         video.currentTime = safeTarget;
       }
       reportPlayback({ currentTime: safeTarget, forceTimeUpdate: true });
-      if (currentItem) {
-        updateWatchProgress(currentItem.id, safeTarget, video.duration || currentItem.durationSeconds, true);
+      const item = currentItemRef.current;
+      if (item) {
+        updateWatchProgress(item.id, safeTarget, video.duration || item.durationSeconds, true);
       }
-    } else if (source?.kind === 'youtube' && youtubePlayerRef.current) {
+    } else if (sourceKindRef.current === 'youtube' && youtubePlayerRef.current) {
       youtubePlayerRef.current.seekTo(safeTarget, true);
       reportPlayback({ currentTime: safeTarget, forceTimeUpdate: true });
-      if (currentItem) {
-        updateWatchProgress(currentItem.id, safeTarget, duration, true);
+      const item = currentItemRef.current;
+      if (item) {
+        updateWatchProgress(item.id, safeTarget, durationRef.current, true);
       }
     } else {
       seek(safeTarget);
     }
-  }, [currentItem, duration, reportPlayback, seek, source?.kind, updateWatchProgress]);
+  }, [seek, updateWatchProgress, reportPlayback]);
 
   const syncWithTime = useCallback((targetSeconds: number) => {
     const video = videoRef.current;
     if (!video) return;
-    const safeTarget = Math.max(0, Math.min(targetSeconds, duration || targetSeconds));
+    const safeTarget = Math.max(0, Math.min(targetSeconds, durationRef.current || targetSeconds));
     const diff = safeTarget - video.currentTime;
 
     // Drift < 0.2s: already in sync
@@ -424,7 +440,7 @@ export function VideoPlayer() {
       // Large drift: direct seek
       seekDirectly(safeTarget);
     }
-  }, [duration, seekDirectly]);
+  }, [seekDirectly]);
 
   useEffect(() => {
     if (!currentItem || currentItem.mediaType !== 'tv') {
@@ -677,7 +693,6 @@ export function VideoPlayer() {
     const resumeAt = pendingSeekRef.current ?? watchProgress[currentItem.id]?.position ?? watchProgress[rootKey]?.position ?? 0;
     const isHls = Boolean(directUrl && (directUrl.includes('.m3u8') || source?.mimeType?.includes('mpegurl')));
     let hlsInstance: Hls | null = null;
-    let stallTimer: ReturnType<typeof setTimeout> | null = null;
 
     const fallBackQuality = () => {
       if (directUrl.startsWith('blob:')) return false;
@@ -730,11 +745,15 @@ export function VideoPlayer() {
         lowLatencyMode: false,
         startLevel: -1,
         startPosition: resumeAt > 2 ? resumeAt : -1,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        maxBufferSize: 30 * 1024 * 1024,
-        backBufferLength: 15,
+        // Mirrors the mobile app's ExoPlayer DefaultLoadControl (PlayerScreen.kt):
+        // minBuffer 60s / maxBuffer 180s / back-buffer 60s so playback starts
+        // sooner after rebuffer and survives network hiccups without stalling.
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        maxBufferSize: 60 * 1024 * 1024,
+        backBufferLength: 60,
         maxBufferHole: 0.5,
+        nudgeMaxRetry: 10,
         startFragPrefetch: true,
         progressive: true,
       });
@@ -847,7 +866,7 @@ export function VideoPlayer() {
 
       hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
-        setIsBuffering(false);
+        clearBuffering();
 
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
           if (networkRetryCountRef.current < 5) {
@@ -885,32 +904,98 @@ export function VideoPlayer() {
       });
     }
 
-    const onTime = () => {
-      reportPlayback({ currentTime: video.currentTime, duration: video.duration || currentItem.durationSeconds });
-      updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds);
-    };
-    const onProgress = () => {
-      if (video.buffered.length > 0) {
-        setBufferedEnd(video.buffered.end(video.buffered.length - 1));
+    // ── Buffering state engine ─────────────────────────────────────────────
+    // Single source of truth for the "Buffering…" overlay. Engaged by
+    // waiting/stalled/load events, and guaranteed to retire once data starts
+    // flowing (readyState >= 3), playback resumes, the stream ends, or the
+    // user pauses — matching the mobile app's ExoPlayer STATE_BUFFERING
+    // semantics where the spinner can never outlive STATE_READY/IDLE.
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    let bufferWatchdog: ReturnType<typeof setInterval> | null = null;
+    let watchdogLastPosition = -1;
+    let watchdogStuckSince = 0;
+
+    const clearBuffering = () => {
+      if (bufferWatchdog) {
+        clearInterval(bufferWatchdog);
+        bufferWatchdog = null;
       }
-    };
-    const onPlay = () => {
-      intendedPlayingRef.current = true;
-      video.muted = volume === 0;
-      video.volume = volume;
-      video.playbackRate = playbackSpeed;
-      reportPlayback({ isPlaying: true, isLoading: false, error: null });
-    };
-    const onPause = () => {
-      intendedPlayingRef.current = false;
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
       setIsBuffering(false);
-      reportPlayback({ isPlaying: false, isLoading: false, forceTimeUpdate: true });
-      updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds, true);
     };
-    const onWaiting = () => {
-      if (seekHoldRef.current.active) return;
+
+    const engageBuffering = () => {
+      if (video.error) return;
+      if (video.readyState >= 3) return; // data already flowing — nothing to do
       setIsBuffering(true);
       reportPlayback({ isLoading: true });
+      ensureBufferWatchdog();
+    };
+
+    const ensureBufferWatchdog = () => {
+      if (bufferWatchdog) return;
+      watchdogLastPosition = video.currentTime;
+      watchdogStuckSince = Date.now();
+      bufferWatchdog = setInterval(() => {
+        const element = videoRef.current;
+        if (!element) {
+          clearBuffering();
+          return;
+        }
+        // Safety net #1: data is buffered ahead of the playhead — the overlay
+        // must retire even if `canplay`/`playing` transitions were missed.
+        if (element.readyState >= 3) {
+          clearBuffering();
+          reportPlayback({ isLoading: false, error: null });
+          if (intendedPlayingRef.current && element.paused && !document.hidden) {
+            element.play().catch(() => undefined);
+          }
+          return;
+        }
+        if (element.error) return; // handled by onError
+        // Safety net #2: playback is not expected (user paused, no pending
+        // seek) — never pin the spinner while idle, like ExoPlayer on pause.
+        if (!intendedPlayingRef.current && element.paused && !element.seeking && !seekHoldRef.current.active) {
+          clearBuffering();
+          reportPlayback({ isLoading: false });
+          return;
+        }
+        // Soft recovery kick when the playhead has been frozen too long.
+        if (element.currentTime !== watchdogLastPosition) {
+          watchdogLastPosition = element.currentTime;
+          watchdogStuckSince = Date.now();
+          return;
+        }
+        if (Date.now() - watchdogStuckSince > 12_000) {
+          watchdogStuckSince = Date.now();
+          if (hlsRef.current) {
+            try {
+              hlsRef.current.startLoad();
+            } catch {}
+          } else {
+            try {
+              const total = element.duration;
+              if (!Number.isFinite(total) || total < 0 || element.currentTime + 0.25 < total) {
+                element.currentTime = element.currentTime + 0.25;
+              }
+            } catch {}
+          }
+        }
+      }, 600);
+    };
+
+    const onWaiting = () => {
+      if (seekHoldRef.current.active) return;
+      if (video.error) return;
+      // While paused with no pending seek/hold, there is nothing being waited
+      // on that belongs to this playback session — don't pin the overlay.
+      if (video.paused && !intendedPlayingRef.current) return;
+      setIsBuffering(true);
+      reportPlayback({ isLoading: true });
+      ensureBufferWatchdog();
       if (stallTimer) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
         if (!video.paused) {
@@ -931,10 +1016,37 @@ export function VideoPlayer() {
         }
       }, 2500);
     };
+
+    const onTime = () => {
+      // Guarantee: once frames are flowing, the buffering overlay retires even
+      // if the transition events were never observed.
+      if (bufferWatchdog && video.readyState >= 3) {
+        clearBuffering();
+        reportPlayback({ isLoading: false, error: null });
+      }
+      reportPlayback({ currentTime: video.currentTime, duration: video.duration || currentItem.durationSeconds });
+      updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds);
+    };
+    const onProgress = () => {
+      if (video.buffered.length > 0) {
+        setBufferedEnd(video.buffered.end(video.buffered.length - 1));
+      }
+    };
+    const onPlay = () => {
+      intendedPlayingRef.current = true;
+      video.muted = volume === 0;
+      video.volume = volume;
+      video.playbackRate = playbackSpeed;
+      reportPlayback({ isPlaying: true, isLoading: false, error: null });
+    };
+    const onPause = () => {
+      intendedPlayingRef.current = false;
+      clearBuffering();
+      reportPlayback({ isPlaying: false, isLoading: false, forceTimeUpdate: true });
+      updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds, true);
+    };
     const onPlaying = () => {
-      if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = null;
-      setIsBuffering(false);
+      clearBuffering();
       networkRetryCountRef.current = 0;
       mediaRetryCountRef.current = 0;
       nativeRetryCountRef.current = 0;
@@ -943,23 +1055,28 @@ export function VideoPlayer() {
     };
     const onSeeking = () => {
       reportPlayback({ isLoading: true });
+      ensureBufferWatchdog();
     };
     const onCanPlay = () => {
-      if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = null;
-      setIsBuffering(false);
+      clearBuffering();
       reportPlayback({ isLoading: false, error: null });
       if (intendedPlayingRef.current && video.paused) {
         video.play().catch(() => undefined);
       }
     };
     const onSeeked = () => {
+      // A seek that lands on buffered data may never fire `canplay` — retire
+      // the loading state here so paused seeks don't spin forever.
+      if (video.readyState >= 3) {
+        clearBuffering();
+        reportPlayback({ isLoading: false });
+      }
       if (!seekHoldRef.current.active) return;
       requestAnimationFrame(() => requestAnimationFrame(() => releaseHeldSeek(video)));
     };
     const onError = (e?: React.SyntheticEvent<HTMLVideoElement, Event> | Event) => {
       if (!directUrl || !video.src) return;
-      setIsBuffering(false);
+      clearBuffering();
       const mediaErr = video.error;
       console.warn('Native video playback error encountered:', mediaErr, e);
       if (mediaErr && (mediaErr.code === 2 || mediaErr.code === 3 || mediaErr.code === 4)) {
@@ -995,6 +1112,7 @@ export function VideoPlayer() {
     video.addEventListener('playing', onPlaying);
     video.addEventListener('pause', onPause);
     video.addEventListener('waiting', onWaiting);
+    video.addEventListener('stalled', onWaiting);
     video.addEventListener('seeking', onSeeking);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('seeked', onSeeked);
@@ -1008,6 +1126,15 @@ export function VideoPlayer() {
       if (video.readyState >= 1) {
         onLoaded();
       }
+    }
+
+    // Playback is intended from the start (mobile parity: ExoPlayer
+    // `playWhenReady = true`) — show the buffering spinner like ExoPlayer's
+    // STATE_BUFFERING before the first frame arrives, and let the watchdog
+    // retire it as soon as data starts flowing.
+    if (!wasPausedRef.current) {
+      intendedPlayingRef.current = true;
+      engageBuffering();
     }
 
     const controller: PlaybackController = {
@@ -1041,12 +1168,13 @@ export function VideoPlayer() {
       video.removeEventListener('playing', onPlaying);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('waiting', onWaiting);
+      video.removeEventListener('stalled', onWaiting);
       video.removeEventListener('seeking', onSeeking);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', onError);
-      if (stallTimer) clearTimeout(stallTimer);
+      clearBuffering();
       if (networkRetryTimerRef.current) clearTimeout(networkRetryTimerRef.current);
       if (driftCompensationTimerRef.current) clearTimeout(driftCompensationTimerRef.current);
       if (seekHoldTimerRef.current) clearTimeout(seekHoldTimerRef.current);
@@ -1875,21 +2003,6 @@ export function VideoPlayer() {
                     controls={false}
                     preload="metadata"
                     crossOrigin="anonymous"
-                    onWaiting={() => {
-                      if (!seekHoldRef.current.active) setIsBuffering(true);
-                    }}
-                    onPlaying={() => {
-                      setIsBuffering(false);
-                      reportPlayback({ isPlaying: true, isLoading: false, error: null });
-                    }}
-                    onError={() => {
-                      setIsBuffering(false);
-                      reportPlayback({
-                        isLoading: false,
-                        isPlaying: false,
-                        error: 'This video stream encountered a network error or format restriction.',
-                      });
-                    }}
                     style={{
                       filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
                     }}
@@ -2168,7 +2281,7 @@ export function VideoPlayer() {
 
       {/* ── Mini Player (Docked at Bottom) ───────────────────────── */}
       {!isExpanded && (
-        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-[85] bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:bottom-5 rounded-2xl border border-white/15 bg-[#121c21]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.45)] overflow-hidden select-none">
+        <div className="fixed left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[620px] z-[85] bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] sm:bottom-5 rounded-2xl border border-[var(--line)] bg-[var(--panel-elevated)]/95 backdrop-blur-2xl shadow-[0_14px_45px_rgba(0,0,0,.25)] overflow-hidden select-none">
           <div className="flex items-center gap-3 p-2.5">
             <button
               type="button"
@@ -2185,8 +2298,8 @@ export function VideoPlayer() {
               className="min-w-0 flex-1 text-left cursor-pointer"
               title="Expand player"
             >
-              <h3 className="text-xs font-black truncate text-white">{currentItem.title}</h3>
-              <p className={`text-[10px] truncate mt-0.5 ${playbackError ? 'text-red-400' : 'text-white/60'}`}>
+              <h3 className="text-xs font-black truncate text-[var(--text)]">{currentItem.title}</h3>
+              <p className={`text-[10px] truncate mt-0.5 ${playbackError ? 'text-red-500 dark:text-red-400' : 'text-[var(--text-muted)]'}`}>
                 {playbackError || (source?.kind === 'youtube' ? 'Official trailer • tap to resume' : isPlaying ? 'Playing now' : 'Paused')}
               </p>
             </button>
@@ -2217,7 +2330,7 @@ export function VideoPlayer() {
                 e.stopPropagation();
                 nextItem();
               }}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--accent-soft)] cursor-pointer transition active:scale-95 shrink-0"
               title="Next video"
             >
               <SkipForward size={18} className="fill-current" />
@@ -2228,7 +2341,7 @@ export function VideoPlayer() {
                 e.stopPropagation();
                 setIsExpanded(true);
               }}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--accent-soft)] cursor-pointer transition active:scale-95 shrink-0"
               title="Expand player"
             >
               <Maximize2 size={17} />
@@ -2239,7 +2352,7 @@ export function VideoPlayer() {
                 e.stopPropagation();
                 closePlayer();
               }}
-              className="w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 cursor-pointer transition active:scale-95 shrink-0"
+              className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--text-faint)] hover:text-[var(--text)] hover:bg-[var(--accent-soft)] cursor-pointer transition active:scale-95 shrink-0"
               title="Close player"
             >
               <X size={17} />
@@ -2256,10 +2369,10 @@ export function VideoPlayer() {
       {/* ── Sleep Timer Dialog ──────────────────────────────────── */}
       {showTimer && (
         <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-md flex items-center justify-center p-5" onClick={() => setShowTimer(false)}>
-          <div className="watch-dialog w-full max-w-xs rounded-[26px] p-5 bg-[#121c21] border border-white/10 text-white" onClick={(event) => event.stopPropagation()}>
+          <div className="watch-dialog w-full max-w-xs rounded-[26px] p-5 text-[var(--text)]" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[9px] uppercase tracking-[.17em] font-black text-[#7fffd2]">Playback</p>
+                <p className="text-[9px] uppercase tracking-[.17em] font-black text-[var(--accent)]">Playback</p>
                 <h3 className="font-black mt-0.5 text-base">Sleep timer</h3>
               </div>
               <button onClick={() => setShowTimer(false)} className="icon-button"><X size={17} /></button>
@@ -2272,10 +2385,10 @@ export function VideoPlayer() {
                     setSleepTimer(minutes);
                     setShowTimer(false);
                   }}
-                  className={`py-3 rounded-2xl border text-xs font-bold transition ${
+                  className={`watch-timer-option py-3 rounded-2xl border text-xs font-bold transition ${
                     sleepTimerMinutes === minutes
-                      ? 'bg-[#7fffd2] text-black border-transparent'
-                      : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'
+                      ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-transparent'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
                   {minutes} minutes

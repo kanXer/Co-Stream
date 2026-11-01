@@ -182,14 +182,14 @@ export function DetailsSheet({
                 {media.posterUrl ? <Image src={media.posterUrl} alt={media.title} fill sizes="144px" className="object-cover" /> : <div className="w-full h-full bg-[var(--panel)]" />}
               </div>
               <div className="min-w-0 pb-1">
-                {media.tagline && <p className="eyebrow !text-[#7fffd2] mb-2">{media.tagline}</p>}
-                <h2 className="text-3xl sm:text-5xl font-black tracking-[-0.045em] text-white drop-shadow-lg leading-[.98]">{media.title}</h2>
-                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-3 text-xs font-bold text-white/70">
+                {media.tagline && <p className="eyebrow !text-[var(--accent)] mb-2">{media.tagline}</p>}
+                <h2 className="text-3xl sm:text-5xl font-black tracking-[-0.045em] text-[var(--text)] drop-shadow-lg leading-[.98]">{media.title}</h2>
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-3 text-xs font-bold text-[var(--text-muted)]">
                   <span>{media.year}</span>
-                  {media.rating > 0 && <span className="inline-flex items-center gap-1 text-amber-300"><Star size={13} className="fill-current" />{media.rating.toFixed(1)}</span>}
+                  {media.rating > 0 && <span className="inline-flex items-center gap-1 text-amber-500 dark:text-amber-300"><Star size={13} className="fill-current" />{media.rating.toFixed(1)}</span>}
                   {durationMinutes > 0 && <span className="inline-flex items-center gap-1"><Clock3 size={13} />{durationMinutes} min</span>}
                   {media.seasonCount ? <span>{media.seasonCount} season{media.seasonCount === 1 ? '' : 's'}</span> : null}
-                  {media.playback?.label && <span className="text-[#7fffd2]">{media.playback.label}</span>}
+                  {media.playback?.label && <span className="text-[var(--accent)]">{media.playback.label}</span>}
                 </div>
               </div>
             </div>

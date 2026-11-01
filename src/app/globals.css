@@ -7,7 +7,8 @@
   --line: #d9e4df;
   --text: #0a1713;
   --text-muted: #52655e;
-  --text-faint: #7c9088;
+  /* Darkened for AA icon/label contrast on light backgrounds (bottom-nav icons, faint labels). */
+  --text-faint: #57695f;
   --accent: #087c67;
   --accent-ink: #ffffff;
   --accent-soft: rgba(8, 124, 103, 0.10);

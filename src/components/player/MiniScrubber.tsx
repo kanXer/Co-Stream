@@ -34,9 +34,9 @@ export const MiniScrubber = React.memo(function MiniScrubber({
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
 
   return (
-    <div className="relative z-10 border-t border-white/10 bg-black/25 px-2.5 pb-2.5 pt-2">
+    <div className="relative z-10 border-t border-[var(--line)] bg-[var(--accent-soft)] px-2.5 pb-2.5 pt-2">
       <div
-        className="h-1.5 rounded-full overflow-hidden bg-white/20 relative cursor-pointer"
+        className="h-1.5 rounded-full overflow-hidden bg-[var(--line)] relative cursor-pointer"
         onClick={(event) => {
           event.stopPropagation();
           const rect = event.currentTarget.getBoundingClientRect();
