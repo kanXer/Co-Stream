@@ -893,6 +893,28 @@ export function proxiedMediaPath(target: string) {
   return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
 }
 
+// Verified against the live CDNs: NetMirror's media hosts (*.top with the
+// /files/<id>/... layout) serve every segment with `Access-Control-Allow-Origin: *`
+// and byte-range support, so the browser can fetch them directly — exactly how
+// the Android app streams. Manifests still go through the proxy (they need URI
+// rewriting); only leaf media segments go direct. This removes the Vercel
+// lambda hop that throttled throughput and caused stutter/heavy buffering.
+export function directCdnSegmentUrl(target: string): string | null {
+  if (target.startsWith('synthetic:')) return null;
+  try {
+    const url = new URL(target);
+    if (url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase();
+    const path = url.pathname.toLowerCase();
+    if (!host.endsWith('.top')) return null;
+    if (!/\/files\/[a-z0-9._-]+\//i.test(path)) return null;
+    if (!/\.(ts|js|woff2|jpg|jpeg)$/i.test(path)) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 const globalForProxy = globalThis as typeof globalThis & {
   __coProxyCache?: Map<string, { body: Buffer; contentType: string; status: number; expires: number }>;
 };
@@ -1028,13 +1050,12 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
         if (trimmed.endsWith('.js')) {
           const woff2File = trimmed.replace(/\.js$/, '.woff2');
           const fullWoff2 = videoBase + woff2File;
-          vRewritten.push(proxiedMediaPath(fullWoff2));
+          vRewritten.push(directCdnSegmentUrl(fullWoff2) || proxiedMediaPath(fullWoff2));
         } else {
           vRewritten.push(line);
         }
       }
-      const vBody = vRewritten.join('\n');
-      return new Response(vBody, {
+      const vBody = vRewritten.join('\n');      return new Response(vBody, {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.apple.mpegurl',
@@ -1140,7 +1161,9 @@ export async function proxyNetMirrorTarget(target: string, request: Request) {
       try {
         const absolute = new URL(trimmed, base).toString();
         if (isAllowedNetMirrorTarget(absolute)) {
-          rewritten.push(proxiedMediaPath(absolute));
+          // Media segments stream directly from the CDN (CORS is open);
+          // sub-manifests stay proxied so they get rewritten recursively.
+          rewritten.push(directCdnSegmentUrl(absolute) || proxiedMediaPath(absolute));
           continue;
         }
       } catch {
