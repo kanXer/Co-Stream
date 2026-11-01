@@ -566,9 +566,16 @@ export async function resolveCurrentNetMirrorStream(options: {
     options.type,
     options.year,
   );
+  // Fetch default stream embed immediately in parallel with variants for ultra-fast startup.
+  // Only await variants if an explicit non-default audio track was selected.
   let audioConfig: Parameters<typeof getCurrentNetMirrorEmbed>[4];
   let selectedAudioSubjectId: string | undefined;
   let selectedAudioLanguage: string | undefined;
+
+  const defaultEmbedPromise = (!options.audioSubjectId && !options.audioDetailPath)
+    ? getCurrentNetMirrorEmbed(resolved.tmdbId, resolved.type, options.season || 1, options.episode || 1)
+    : null;
+
   try {
     const variants = await getCurrentNetMirrorVariants(
       resolved.tmdbId,
@@ -603,13 +610,24 @@ export async function resolveCurrentNetMirrorStream(options: {
   }
   let embed: NetMirrorEmbed | null = null;
   try {
-    embed = await getCurrentNetMirrorEmbed(
-      resolved.tmdbId,
-      resolved.type,
-      options.season || 1,
-      options.episode || 1,
-      audioConfig,
-    );
+    if (audioConfig) {
+      embed = await getCurrentNetMirrorEmbed(
+        resolved.tmdbId,
+        resolved.type,
+        options.season || 1,
+        options.episode || 1,
+        audioConfig,
+      );
+    } else if (defaultEmbedPromise) {
+      embed = await defaultEmbedPromise;
+    } else {
+      embed = await getCurrentNetMirrorEmbed(
+        resolved.tmdbId,
+        resolved.type,
+        options.season || 1,
+        options.episode || 1,
+      );
+    }
   } catch {
     embed = null;
   }

@@ -481,7 +481,10 @@ export function VideoPlayer() {
     }
     if (videoRef.current) {
       videoRef.current.pause();
+      videoRef.current.removeAttribute('src');
+      videoRef.current.load();
     }
+    setIsBuffering(false);
     wasPausedRef.current = false;
     setSource(null);
     setDirectUrl(null);
@@ -727,10 +730,10 @@ export function VideoPlayer() {
         lowLatencyMode: false,
         startLevel: -1,
         startPosition: resumeAt > 2 ? resumeAt : -1,
-        maxBufferLength: 45,
-        maxMaxBufferLength: 90,
-        maxBufferSize: 60 * 1024 * 1024,
-        backBufferLength: 40,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 30 * 1024 * 1024,
+        backBufferLength: 15,
         maxBufferHole: 0.5,
         startFragPrefetch: true,
         progressive: true,
