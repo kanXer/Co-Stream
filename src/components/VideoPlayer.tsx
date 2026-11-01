@@ -1278,32 +1278,6 @@ export function VideoPlayer() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setIsExpanded]);
 
-  if (!currentItem) {
-    keyboardActionsRef.current = {};
-    return null;
-  }
-
-  const saved = isWatchlisted(currentItem.id);
-  const background = currentItem.backdropUrl || currentItem.posterUrl;
-  const isSeries = currentItem.mediaType === 'tv';
-  const episodesPending = isSeries && (episodesLoading || (!currentItem.episodes && !episodeError));
-  const currentEpNum = currentItem.selectedEpisode || 1;
-  const nextEpisode = playerEpisodes.find((ep) => ep.number === currentEpNum + 1);
-  const isEnded = duration > 0 && ((videoRef.current?.currentTime ?? currentTime) >= duration - 0.5);
-
-  const chooseSpeed = (speed: number) => {
-    setPlaybackSpeed(speed);
-    if (videoRef.current) videoRef.current.playbackRate = speed;
-    setPlayerMenu(null);
-    revealControls();
-  };
-
-  const cycleSpeed = () => {
-    const currentIdx = SPEED_OPTIONS.indexOf(playbackSpeed);
-    const nextIdx = (currentIdx + 1) % SPEED_OPTIONS.length;
-    chooseSpeed(SPEED_OPTIONS[nextIdx]);
-  };
-
   const chooseQuality = useCallback((label: string, url?: string, hlsLevelIndex?: number) => {
     setSelectedQuality(label);
     selectedQualityRef.current = label;
@@ -1353,6 +1327,32 @@ export function VideoPlayer() {
       reportPlayback({ isLoading: true });
     }
   }, [currentTime, directUrl, isPlaying, reportPlayback, revealControls]);
+
+  if (!currentItem) {
+    keyboardActionsRef.current = {};
+    return null;
+  }
+
+  const saved = isWatchlisted(currentItem.id);
+  const background = currentItem.backdropUrl || currentItem.posterUrl;
+  const isSeries = currentItem.mediaType === 'tv';
+  const episodesPending = isSeries && (episodesLoading || (!currentItem.episodes && !episodeError));
+  const currentEpNum = currentItem.selectedEpisode || 1;
+  const nextEpisode = playerEpisodes.find((ep) => ep.number === currentEpNum + 1);
+  const isEnded = duration > 0 && ((videoRef.current?.currentTime ?? currentTime) >= duration - 0.5);
+
+  const chooseSpeed = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (videoRef.current) videoRef.current.playbackRate = speed;
+    setPlayerMenu(null);
+    revealControls();
+  };
+
+  const cycleSpeed = () => {
+    const currentIdx = SPEED_OPTIONS.indexOf(playbackSpeed);
+    const nextIdx = (currentIdx + 1) % SPEED_OPTIONS.length;
+    chooseSpeed(SPEED_OPTIONS[nextIdx]);
+  };
 
   const chooseAudio = async (resolveUrl: string) => {
     setSwitchingSource(true);
