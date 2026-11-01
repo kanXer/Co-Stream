@@ -34,6 +34,8 @@ export const PlayerCenterControls = React.memo(function PlayerCenterControls({
           e.stopPropagation();
           onSeekBy(-10);
         }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         className={`player-gpu-layer ${
           isInteractive ? 'pointer-events-auto' : 'pointer-events-none'
         } relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 border border-white/15 text-white flex items-center justify-center backdrop-blur-md transition active:scale-90 shadow-2xl`}
@@ -48,13 +50,15 @@ export const PlayerCenterControls = React.memo(function PlayerCenterControls({
           e.stopPropagation();
           onTogglePlay();
         }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         disabled={switchingSource}
         className={`player-gpu-layer ${
           isInteractive ? 'pointer-events-auto' : 'pointer-events-none'
         } w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white hover:bg-white/95 text-black flex items-center justify-center shadow-2xl transition-transform active:scale-90 disabled:opacity-60`}
         title={isPlaying ? 'Pause' : 'Play'}
       >
-        {isLoading || switchingSource ? (
+        {switchingSource ? (
           <span className="w-7 h-7 rounded-full border-3 border-black/25 border-t-black animate-spin" />
         ) : isEnded ? (
           <RotateCw size={30} className="stroke-[2.5]" />
@@ -71,6 +75,8 @@ export const PlayerCenterControls = React.memo(function PlayerCenterControls({
           e.stopPropagation();
           onSeekBy(10);
         }}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
         className={`player-gpu-layer ${
           isInteractive ? 'pointer-events-auto' : 'pointer-events-none'
         } relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-black/55 hover:bg-black/75 border border-white/15 text-white flex items-center justify-center backdrop-blur-md transition active:scale-90 shadow-2xl`}

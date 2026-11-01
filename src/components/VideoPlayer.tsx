@@ -1806,6 +1806,7 @@ export function VideoPlayer() {
     const video = videoRef.current;
     if (video && source?.kind === 'direct') {
       if (video.paused) {
+        intendedPlayingRef.current = true;
         setControlPulse('play');
         const playPromise = video.play();
         if (playPromise !== undefined) {
@@ -1816,6 +1817,7 @@ export function VideoPlayer() {
           reportPlayback({ isPlaying: true, isLoading: false });
         }
       } else {
+        intendedPlayingRef.current = false;
         setControlPulse('pause');
         video.pause();
         reportPlayback({ isPlaying: false, isLoading: false });
