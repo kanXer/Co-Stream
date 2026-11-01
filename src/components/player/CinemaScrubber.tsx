@@ -14,6 +14,7 @@ function formatTime(seconds: number) {
 
 export interface CinemaScrubberProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoSessionKey?: string;
   duration: number;
   bufferedEnd: number;
   title: string;
@@ -26,6 +27,7 @@ export interface CinemaScrubberProps {
 
 export const CinemaScrubber = React.memo(function CinemaScrubber({
   videoRef,
+  videoSessionKey,
   duration,
   bufferedEnd,
   title,
@@ -64,7 +66,11 @@ export const CinemaScrubber = React.memo(function CinemaScrubber({
       video.removeEventListener('seeked', handleTime);
       video.removeEventListener('loadedmetadata', handleTime);
     };
-  }, [videoRef]);
+    // videoSessionKey: the keyed <video> element (per movie / per resolved
+    // source) is a NEW DOM node even though the ref object stays identical —
+    // without this dep the listeners never attach after a remount and the
+    // scrubber timer freezes while playback continues.
+  }, [videoRef, videoSessionKey]);
 
   const calculateScrubTarget = useCallback((clientX: number) => {
     const el = scrubberRef.current;

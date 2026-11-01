@@ -4,12 +4,14 @@ import React, { useEffect, useState } from 'react';
 
 export interface MiniScrubberProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoSessionKey?: string;
   duration: number;
   onSeek: (seconds: number) => void;
 }
 
 export const MiniScrubber = React.memo(function MiniScrubber({
   videoRef,
+  videoSessionKey,
   duration,
   onSeek,
 }: MiniScrubberProps) {
@@ -29,7 +31,7 @@ export const MiniScrubber = React.memo(function MiniScrubber({
       video.removeEventListener('seeking', handleTime);
       video.removeEventListener('seeked', handleTime);
     };
-  }, [videoRef]);
+  }, [videoRef, videoSessionKey]);
 
   const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
 

@@ -1992,6 +1992,12 @@ export function VideoPlayer() {
     selectedQuality !== 'Auto' ? selectedQuality : null,
   ].filter(Boolean).join(' • ');
 
+  // Identity of the current <video> DOM node: keyed remounts (new movie) or an
+  // async-resolved source produce a NEW element while the ref object stays the
+  // same. Scrubbers must re-attach their timeupdate listeners whenever this
+  // changes or their timers freeze mid-playback.
+  const videoSessionKey = `${source?.kind ?? 'none'}|${currentItem?.id ?? ''}|${directUrl ?? ''}`;
+
   return (
     <>
       <div ref={shellRef} className={isExpanded ? 'watch-shell fixed inset-0 z-[70] overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-80 h-48 opacity-0 pointer-events-none'}>
@@ -2125,6 +2131,7 @@ export function VideoPlayer() {
 
                     <CinemaScrubber
                       videoRef={videoRef}
+                      videoSessionKey={videoSessionKey}
                       duration={duration}
                       bufferedEnd={bufferedEnd}
                       title={currentItem.title}
@@ -2405,6 +2412,7 @@ export function VideoPlayer() {
           </div>
           <MiniScrubber
             videoRef={videoRef}
+            videoSessionKey={videoSessionKey}
             duration={duration}
             onSeek={seekDirectly}
           />
