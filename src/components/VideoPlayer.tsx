@@ -80,6 +80,9 @@ type YouTubeNamespace = {
 let youtubeApiPromise: Promise<YouTubeNamespace> | null = null;
 
 function loadYouTubeApi(): Promise<YouTubeNamespace> {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Window is not available during SSR'));
+  }
   const ytWindow = window as Window & {
     YT?: YouTubeNamespace;
     onYouTubeIframeAPIReady?: () => void;
@@ -436,10 +439,10 @@ export function VideoPlayer() {
     setPlayerEpisodes(episodes);
     if (currentItem.episodes) setEpisodesLoading(false);
     setEpisodeError(null);
-    if (episodes.length) {
+    if (episodes.length && (!queue.length || queue[0]?.id !== currentItem.id)) {
       replaceQueue(buildEpisodeQueue(currentItem, episodes, season), currentItem.id);
     }
-  }, [currentItem, replaceQueue]);
+  }, [currentItem?.id, currentItem?.selectedSeason, currentItem?.episodes?.length, replaceQueue]);
 
   useEffect(() => {
     if (!currentItem) {

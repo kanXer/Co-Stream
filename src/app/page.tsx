@@ -19,14 +19,19 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { AUTH_EVENT, getSession, type CoProfile } from '@/components/AuthGate';
 import { DetailsSheet } from '@/components/DetailsSheet';
 import { MediaCard } from '@/components/MediaCard';
 import { OfflineLibrary } from '@/components/OfflineLibrary';
 import { PlatformPicker } from '@/components/PlatformPicker';
 import { SettingsModal } from '@/components/SettingsModal';
-import { VideoPlayer } from '@/components/VideoPlayer';
 import { AVAILABLE_LANGUAGES, useStream } from '@/context/StreamContext';
+
+const VideoPlayer = dynamic(
+  () => import('@/components/VideoPlayer').then((mod) => mod.VideoPlayer),
+  { ssr: false }
+);
 import {
   DEFAULT_STREAMING_PLATFORMS,
   STREAMING_PLATFORMS,
