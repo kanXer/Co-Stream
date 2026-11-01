@@ -1,15 +1,30 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface BufferingOverlayProps {
   isBuffering: boolean;
 }
 
+/** Grace window (ms) before the overlay appears so momentary stalls between
+ *  buffered segments don't flash the spinner on and off. */
+const SHOW_DELAY_MS = 400;
+
 export const BufferingOverlay = React.memo(function BufferingOverlay({
   isBuffering,
 }: BufferingOverlayProps) {
-  if (!isBuffering) return null;
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (!isBuffering) {
+      setVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setVisible(true), SHOW_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isBuffering]);
+
+  if (!visible) return null;
 
   return (
     <div className="player-gpu-layer pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px] transition-opacity duration-300">

@@ -372,6 +372,9 @@ export function VideoPlayer() {
     setPipSupported(typeof document !== 'undefined' && 'pictureInPictureEnabled' in document && document.pictureInPictureEnabled);
   }, []);
 
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const lastScrolledItemRef = useRef<string | null>(null);
+
   const releaseHeldSeek = (video: HTMLVideoElement) => {
     if (!seekHoldRef.current.active) return;
     const resume = seekHoldRef.current.resume;
@@ -1355,6 +1358,16 @@ export function VideoPlayer() {
     };
   }, []);
 
+  // New media selected: snap the watch page back to the top so the player is
+  // the first thing on screen instead of resuming the previous scroll depth.
+  useEffect(() => {
+    if (!currentId || !isExpanded) return;
+    if (lastScrolledItemRef.current === currentId) return;
+    lastScrolledItemRef.current = currentId;
+    shellRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [currentId, isExpanded]);
+
   useEffect(() => () => {
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
@@ -1961,7 +1974,7 @@ export function VideoPlayer() {
 
   return (
     <>
-      <div className={isExpanded ? 'watch-shell fixed inset-0 z-[70] overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-80 h-48 opacity-0 pointer-events-none'}>
+      <div ref={shellRef} className={isExpanded ? 'watch-shell fixed inset-0 z-[70] overflow-y-auto no-scrollbar' : 'fixed -left-[9999px] top-0 w-80 h-48 opacity-0 pointer-events-none'}>
         {isExpanded && background && (
           <div className="watch-backdrop fixed inset-0 pointer-events-none">
             <Image src={background} alt="" fill sizes="100vw" priority className="watch-backdrop-image object-cover" />

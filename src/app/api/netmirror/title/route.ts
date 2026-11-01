@@ -8,6 +8,10 @@ import {
 } from '@/lib/netmirror';
 import type { MediaDetails, PlaybackSource } from '@/types';
 
+// Upstream embed/variant APIs are fetched with 30s timeouts and possible
+// fallback playlist resolution — allow the full chain to finish.
+export const maxDuration = 60;
+
 const PLAYBACK_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate',
 };

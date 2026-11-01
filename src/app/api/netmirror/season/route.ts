@@ -1,5 +1,8 @@
 import { getCurrentNetMirrorSeason, proxiedMediaPath } from '@/lib/netmirror';
 
+// Upstream season metadata fetch uses 20s timeouts.
+export const maxDuration = 30;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const catalogId = Number(searchParams.get('catalogId'));
