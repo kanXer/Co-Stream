@@ -64,15 +64,19 @@ export async function GET(request: Request) {
       || resolved.streams.find((stream) => stream.resolution === '480p')
       || resolved.streams.find((stream) => stream.resolution === '720p')
       || resolved.streams.at(-1);
+    const isAdaptiveHls = resolved.streamUrl.includes('.m3u8') || resolved.streamUrl.startsWith('synthetic:');
     const playback: PlaybackSource = {
       kind: 'direct',
       label: resolved.resolution,
       url: proxiedMediaPath(resolved.streamUrl),
       downloadUrl: downloadStream ? proxiedMediaPath(downloadStream.url) : proxiedMediaPath(resolved.streamUrl),
-      mimeType: (resolved.streamUrl.includes('.m3u8') || resolved.streamUrl.startsWith('synthetic:')) ? 'application/vnd.apple.mpegurl' : 'video/mp4',
+      mimeType: isAdaptiveHls ? 'application/vnd.apple.mpegurl' : 'video/mp4',
       downloadable: true,
       resolvedAt: Date.now(),
-      selectedQuality: resolved.resolution,
+      // HLS masters contain multiple variants. Keep them on Auto so hls.js can
+      // downshift during a weak connection instead of pinning every viewer to
+      // 720p and rebuffering. Explicit user quality choices still pin a level.
+      selectedQuality: isAdaptiveHls ? 'Auto' : resolved.resolution,
       selectedAudio: audioLabel(resolved.audioLanguage),
       qualities: resolved.streams.map((stream) => ({
         label: stream.resolution,

@@ -1,4 +1,7 @@
 import 'server-only';
+import { directCdnSegmentUrl, proxiedMediaPath } from './netmirrorProxyUrl';
+
+export { directCdnSegmentUrl, proxiedMediaPath };
 
 export type NetMirrorSource = {
   file: string;
@@ -821,9 +824,9 @@ export function generateSyntheticMasterManifest(id: string): string | null {
   }
   const firstAudioUrl = `${item.audioBase}/0/0.m3u8`;
   const resolutions = [
-    { res: '1080p', dim: '1920x1080', bw: 3000000, codecs: 'avc1.640028' },
-    { res: '720p',  dim: '1280x720',  bw: 1800000, codecs: 'avc1.64001f' },
-    { res: '480p',  dim: '854x480',   bw: 800000,  codecs: 'avc1.4d401f' },
+    { res: '1080p', dim: '1920x1080', bw: 1600000, codecs: 'avc1.640028' },
+    { res: '720p',  dim: '1280x720',  bw: 1000000, codecs: 'avc1.64001f' },
+    { res: '480p',  dim: '854x480',   bw: 550000,  codecs: 'avc1.4d401f' },
   ];
   for (const r of resolutions) {
     lines.push(`#EXT-X-STREAM-INF:BANDWIDTH=${r.bw},RESOLUTION=${r.dim},CODECS="${r.codecs}",AUDIO="aac",CLOSED-CAPTIONS=NONE`);
@@ -884,35 +887,6 @@ function parseAttributeList(line: string) {
     attributes[match[1].toUpperCase()] = match[2].replace(/^"|"$/g, '');
   }
   return attributes;
-}
-
-export function proxiedMediaPath(target: string) {
-  const isManifest = target.includes('.m3u8') || target.startsWith('synthetic:');
-  const isSegment = /\.(ts|js|woff2)$/i.test(target) || (target.includes('/files/') && /\.(jpg|jpeg)$/i.test(target));
-  const extSuffix = isSegment ? '&file=segment.ts' : isManifest ? '&file=playlist.m3u8' : '';
-  return `/api/netmirror/proxy?target=${encodeURIComponent(target)}${extSuffix}`;
-}
-
-// Verified against the live CDNs: NetMirror's media hosts (*.top with the
-// /files/<id>/... layout) serve every segment with `Access-Control-Allow-Origin: *`
-// and byte-range support, so the browser can fetch them directly — exactly how
-// the Android app streams. Manifests still go through the proxy (they need URI
-// rewriting); only leaf media segments go direct. This removes the Vercel
-// lambda hop that throttled throughput and caused stutter/heavy buffering.
-export function directCdnSegmentUrl(target: string): string | null {
-  if (target.startsWith('synthetic:')) return null;
-  try {
-    const url = new URL(target);
-    if (url.protocol !== 'https:') return null;
-    const host = url.hostname.toLowerCase();
-    const path = url.pathname.toLowerCase();
-    if (!host.endsWith('.top')) return null;
-    if (!/\/files\/[a-z0-9._-]+\//i.test(path)) return null;
-    if (!/\.(ts|js|woff2|jpg|jpeg)$/i.test(path)) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
 }
 
 const globalForProxy = globalThis as typeof globalThis & {

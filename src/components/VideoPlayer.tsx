@@ -38,6 +38,7 @@ import {
   X,
 } from 'lucide-react';
 import { useStream, journeyKey, type PlaybackController } from '@/context/StreamContext';
+import { directCdnSegmentUrl, proxiedMediaPath } from '@/lib/netmirrorProxyUrl';
 import { OfflineButton } from '@/components/OfflineButton';
 import { getOfflinePlaybackUrl, isVideoDownloaded, startVideoDownload } from '@/lib/offlineStore';
 import { useDownloadedIds, useDownloadState } from '@/lib/offlineHooks';
@@ -51,6 +52,13 @@ import { PlayerSidebarDetails } from '@/components/player/PlayerSidebarDetails';
 import { PlayerTopBar } from '@/components/player/PlayerTopBar';
 import { PlayerSettingsModal } from '@/components/player/PlayerSettingsModal';
 import Hls from 'hls.js';
+import type {
+  FragmentLoaderContext,
+  HlsConfig,
+  Loader,
+  LoaderCallbacks,
+  LoaderConfiguration,
+} from 'hls.js';
 import type { MediaDetails, MediaEpisode, MediaItem, PlaybackSource } from '@/types';
 
 type YouTubePlayer = {
@@ -202,6 +210,99 @@ function unlockScreenOrientation() {
 }
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+// Fragment loader with a one-time same-origin proxy fallback. Segments stream
+// straight from the CDN (like the Android app); if a direct fetch fails or
+// times out — CDN hiccup or ISP throttling of the segment hosts — the very
+// same fragment is re-requested through the Vercel proxy instead of failing.
+class ProxyFallbackFragmentLoader implements Loader<FragmentLoaderContext> {
+  private readonly hlsConfig: HlsConfig;
+  private activeLoader: Loader<FragmentLoaderContext>;
+  context: FragmentLoaderContext | null = null;
+
+  constructor(config: HlsConfig) {
+    this.hlsConfig = config;
+    this.activeLoader = this.createLoader();
+  }
+
+  get stats() {
+    return this.activeLoader.stats;
+  }
+
+  private createLoader(): Loader<FragmentLoaderContext> {
+    const LoaderClass = Hls.DefaultConfig.loader;
+    return new LoaderClass(this.hlsConfig) as Loader<FragmentLoaderContext>;
+  }
+
+  private retryThroughProxy(
+    context: FragmentLoaderContext,
+    config: LoaderConfiguration,
+    callbacks: LoaderCallbacks<FragmentLoaderContext>,
+  ) {
+    const directUrl = directCdnSegmentUrl(context.url);
+    if (!directUrl) return false;
+
+    this.activeLoader.destroy();
+    const proxyContext = { ...context, url: proxiedMediaPath(directUrl) };
+    this.context = proxyContext;
+    this.activeLoader = this.createLoader();
+    this.activeLoader.load(proxyContext, config, callbacks);
+    return true;
+  }
+
+  load(
+    context: FragmentLoaderContext,
+    config: LoaderConfiguration,
+    callbacks: LoaderCallbacks<FragmentLoaderContext>,
+  ) {
+    this.context = context;
+    // Do not spend hls.js's default six retries on a dead direct-CDN path
+    // before trying our healthy same-origin route. The fallback receives the
+    // original policy (including retries); only the first direct attempt is
+    // deliberately fail-fast.
+    const directConfig: LoaderConfiguration = {
+      ...config,
+      loadPolicy: {
+        ...config.loadPolicy,
+        maxTimeToFirstByteMs: Math.min(config.loadPolicy.maxTimeToFirstByteMs, 8_000),
+        maxLoadTimeMs: Math.min(config.loadPolicy.maxLoadTimeMs, 30_000),
+        timeoutRetry: null,
+        errorRetry: null,
+      },
+    };
+    const fallbackCallbacks: LoaderCallbacks<FragmentLoaderContext> = {
+      ...callbacks,
+      onError: (error, failedContext, networkDetails, stats) => {
+        if (!this.retryThroughProxy(failedContext, config, callbacks)) {
+          callbacks.onError(error, failedContext, networkDetails, stats);
+        }
+      },
+      onTimeout: (stats, failedContext, networkDetails) => {
+        if (!this.retryThroughProxy(failedContext, config, callbacks)) {
+          callbacks.onTimeout(stats, failedContext, networkDetails);
+        }
+      },
+    };
+    this.activeLoader.load(context, directConfig, fallbackCallbacks);
+  }
+
+  abort() {
+    this.activeLoader.abort();
+  }
+
+  destroy() {
+    this.activeLoader.destroy();
+    this.context = null;
+  }
+
+  getCacheAge() {
+    return this.activeLoader.getCacheAge?.() ?? null;
+  }
+
+  getResponseHeader(name: string) {
+    return this.activeLoader.getResponseHeader?.(name) ?? null;
+  }
+}
 
 export function VideoPlayer() {
   const {
@@ -752,7 +853,9 @@ export function VideoPlayer() {
       hlsInstance = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        startLevel: -1,
+        // Start on the lowest rendition for a quick, stall-free first frame;
+        // ABR upgrades only after measuring this viewer's actual CDN speed.
+        startLevel: 0,
         startPosition: resumeAt > 2 ? resumeAt : -1,
         // Mirrors the mobile app's ExoPlayer DefaultLoadControl (PlayerScreen.kt):
         // minBuffer 60s / maxBuffer 180s / back-buffer 60s so playback starts
@@ -765,6 +868,15 @@ export function VideoPlayer() {
         nudgeMaxRetry: 10,
         startFragPrefetch: true,
         progressive: true,
+        fLoader: ProxyFallbackFragmentLoader as unknown as typeof Hls.DefaultConfig.fLoader,
+        capLevelToPlayerSize: true,
+        // ABR sanity: synthetic NetMirror manifests overstate BANDWIDTH, and
+        // starting too high on a slow link is what reads as "constant
+        // buffering". Begin conservatively, then upgrade only with sustained
+        // headroom so quality does not oscillate around the connection limit.
+        abrEwmaDefaultEstimate: 800_000,
+        abrBandWidthFactor: 0.8,
+        abrBandWidthUpFactor: 0.6,
       });
       hlsRef.current = hlsInstance;
       hlsInstance.attachMedia(video);
