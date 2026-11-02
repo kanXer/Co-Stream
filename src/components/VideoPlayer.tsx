@@ -360,7 +360,6 @@ export function VideoPlayer() {
     volume,
     repeatMode,
     shuffle,
-    togglePlay,
     seek,
     nextItem,
     previousItem,
@@ -416,6 +415,7 @@ export function VideoPlayer() {
   const [hlsAudioTracks, setHlsAudioTracks] = useState<Array<{ id: number; label: string }>>([]);
   const [hlsSubtitleTracks, setHlsSubtitleTracks] = useState<Array<{ id: number; label: string }>>([]);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [hasPlaybackIntent, setHasPlaybackIntent] = useState(false);
   const isHls = Boolean(directUrl && (directUrl.includes('.m3u8') || source?.mimeType?.includes('mpegurl')));
 
   const networkRetryCountRef = useRef(0);
@@ -424,9 +424,16 @@ export function VideoPlayer() {
   const networkRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const driftCompensationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intendedPlayingRef = useRef(false);
+  const playbackIntentVersionRef = useRef(0);
+  const lastReportedPlaybackTimeRef = useRef(0);
   const playbackSpeedRef = useRef(playbackSpeed);
   const wasPausedRef = useRef(false);
   const selectedQualityRef = useRef(selectedQuality);
+
+  const updatePlaybackIntent = useCallback((playing: boolean) => {
+    intendedPlayingRef.current = playing;
+    setHasPlaybackIntent(playing);
+  }, []);
 
   useEffect(() => {
     playbackSpeedRef.current = playbackSpeed;
@@ -628,6 +635,9 @@ export function VideoPlayer() {
 
   useEffect(() => {
     if (!currentItem) {
+      updatePlaybackIntent(false);
+      wasPausedRef.current = true;
+      playbackIntentVersionRef.current += 1;
       setSource(null);
       setDirectUrl(null);
       return;
@@ -645,6 +655,9 @@ export function VideoPlayer() {
     }
     setIsBuffering(false);
     wasPausedRef.current = false;
+    updatePlaybackIntent(true);
+    playbackIntentVersionRef.current += 1;
+    lastReportedPlaybackTimeRef.current = 0;
     setSource(null);
     setDirectUrl(null);
 
@@ -653,6 +666,9 @@ export function VideoPlayer() {
     const applySource = async (playback: PlaybackSource | null | undefined) => {
       if (!active) return;
       if (!playback) {
+        updatePlaybackIntent(false);
+        wasPausedRef.current = true;
+        playbackIntentVersionRef.current += 1;
         setSource(null);
         setDirectUrl(null);
         reportPlayback({ isLoading: false, isPlaying: false, error: 'No playable source is currently available.' });
@@ -754,6 +770,9 @@ export function VideoPlayer() {
         })
         .catch((error) => {
           if (!active) return;
+          updatePlaybackIntent(false);
+          wasPausedRef.current = true;
+          playbackIntentVersionRef.current += 1;
           setSource(null);
           reportPlayback({
             isLoading: false,
@@ -769,7 +788,7 @@ export function VideoPlayer() {
       if (episodeDetailsTimerRef.current) clearTimeout(episodeDetailsTimerRef.current);
       episodeDetailsTimerRef.current = null;
     };
-  }, [currentId]);
+  }, [currentId, updatePlaybackIntent]);
 
   useEffect(() => {
     setSelectedQuality(source?.selectedQuality || source?.label || 'Auto');
@@ -856,6 +875,28 @@ export function VideoPlayer() {
       return true;
     };
 
+    const playIfIntended = () => {
+      if (wasPausedRef.current || !intendedPlayingRef.current) return;
+      const intentVersion = playbackIntentVersionRef.current;
+      video.play()
+        .then(() => {
+          if (intentVersion !== playbackIntentVersionRef.current || wasPausedRef.current || !intendedPlayingRef.current) return;
+          reportPlayback({ isPlaying: true, isLoading: false });
+        })
+        .catch(() => {
+          if (intentVersion !== playbackIntentVersionRef.current || wasPausedRef.current || !intendedPlayingRef.current) return;
+          if (!video.muted) {
+            video.muted = true;
+            playIfIntended();
+            return;
+          }
+          updatePlaybackIntent(false);
+          wasPausedRef.current = true;
+          playbackIntentVersionRef.current += 1;
+          reportPlayback({ isPlaying: false, isLoading: false });
+        });
+    };
+
     const onLoaded = () => {
       if (resumeAt > 2 && resumeAt < video.duration - 5) video.currentTime = resumeAt;
       pendingSeekRef.current = null;
@@ -863,25 +904,12 @@ export function VideoPlayer() {
       video.volume = volume;
       video.playbackRate = playbackSpeed;
 
-      if (wasPausedRef.current) {
+      if (wasPausedRef.current || !intendedPlayingRef.current) {
+        updatePlaybackIntent(false);
         video.pause();
         reportPlayback({ isPlaying: false, isLoading: false });
       } else {
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
-            .catch(() => {
-              if (!video.muted) {
-                video.muted = true;
-                video.play()
-                  .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
-                  .catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
-              } else {
-                reportPlayback({ isPlaying: false, isLoading: false });
-              }
-            });
-        }
+        playIfIntended();
       }
       episodeDetailsLoaderRef.current?.();
     };
@@ -894,12 +922,12 @@ export function VideoPlayer() {
         // ABR upgrades only after measuring this viewer's actual CDN speed.
         startLevel: 0,
         startPosition: resumeAt > 2 ? resumeAt : -1,
-        // Keep healthy media ahead for smooth playback without stalls.
-        // 60s min buffer and 120s max buffer gives great headroom against network hiccups without exceeding mobile browser memory quotas.
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
-        maxBufferSize: 80 * 1024 * 1024,
-        backBufferLength: 30,
+        // Keep enough media ahead for smooth playback without letting HLS
+        // consume excessive bandwidth or memory on mobile devices.
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+        maxBufferSize: 50 * 1024 * 1024,
+        backBufferLength: 20,
         maxBufferHole: 0.1,
         maxFragLookUpTolerance: 0.25,
         maxAudioFramesDrift: 1,
@@ -933,36 +961,12 @@ export function VideoPlayer() {
         video.playbackRate = playbackSpeed;
         episodeDetailsLoaderRef.current?.();
 
-        if (wasPausedRef.current) {
+        if (wasPausedRef.current || !intendedPlayingRef.current) {
+          updatePlaybackIntent(false);
           video.pause();
-          intendedPlayingRef.current = false;
           reportPlayback({ isPlaying: false, isLoading: false });
         } else {
-          const playPromise = video.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                intendedPlayingRef.current = true;
-                reportPlayback({ isPlaying: true, isLoading: false });
-              })
-              .catch(() => {
-                if (!video.muted) {
-                  video.muted = true;
-                  video.play()
-                    .then(() => {
-                      intendedPlayingRef.current = true;
-                      reportPlayback({ isPlaying: true, isLoading: false });
-                    })
-                    .catch(() => {
-                      intendedPlayingRef.current = false;
-                      reportPlayback({ isPlaying: false, isLoading: false });
-                    });
-                } else {
-                  intendedPlayingRef.current = false;
-                  reportPlayback({ isPlaying: false, isLoading: false });
-                }
-              });
-          }
+          playIfIntended();
         }
 
         if (data.levels && data.levels.length > 1) {
@@ -1042,6 +1046,9 @@ export function VideoPlayer() {
           if (rateLimited) {
             if (networkRetryCountRef.current > 0) {
               hlsInstance?.stopLoad();
+              updatePlaybackIntent(false);
+              wasPausedRef.current = true;
+              playbackIntentVersionRef.current += 1;
               reportPlayback({
                 isLoading: false,
                 isPlaying: false,
@@ -1058,11 +1065,10 @@ export function VideoPlayer() {
             });
             networkRetryTimerRef.current = setTimeout(() => {
               networkRetryTimerRef.current = null;
-              if (hlsRef.current) {
-                reportPlayback({ isLoading: true, isPlaying: true, error: null });
-                hlsRef.current.startLoad();
-                video.play().catch(() => undefined);
-              }
+              if (!hlsRef.current || !intendedPlayingRef.current || wasPausedRef.current) return;
+              reportPlayback({ isLoading: true, isPlaying: true, error: null });
+              hlsRef.current.startLoad();
+              playIfIntended();
             }, delay);
             return;
           }
@@ -1072,11 +1078,14 @@ export function VideoPlayer() {
             const delay = Math.min(500 * Math.pow(1.6, attempt - 1), 5000);
             if (networkRetryTimerRef.current) clearTimeout(networkRetryTimerRef.current);
             networkRetryTimerRef.current = setTimeout(() => {
-              if (hlsRef.current) {
+              if (hlsRef.current && intendedPlayingRef.current && !wasPausedRef.current) {
                 hlsRef.current.startLoad();
               }
             }, delay);
           } else {
+            updatePlaybackIntent(false);
+            wasPausedRef.current = true;
+            playbackIntentVersionRef.current += 1;
             reportPlayback({ isLoading: false, isPlaying: false, error: 'Network error encountered. Unable to stream.' });
           }
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
@@ -1092,10 +1101,16 @@ export function VideoPlayer() {
               hlsInstance.currentLevel = hlsInstance.currentLevel - 1;
               hlsInstance.recoverMediaError();
             } else if (!fallBackQuality()) {
+              updatePlaybackIntent(false);
+              wasPausedRef.current = true;
+              playbackIntentVersionRef.current += 1;
               reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be decoded.' });
             }
           }
         } else {
+          updatePlaybackIntent(false);
+          wasPausedRef.current = true;
+          playbackIntentVersionRef.current += 1;
           reportPlayback({ isLoading: false, isPlaying: false, error: 'This stream could not be played.' });
         }
       });
@@ -1221,6 +1236,9 @@ export function VideoPlayer() {
         clearBuffering();
         reportPlayback({ isLoading: false, error: null });
       }
+      const now = performance.now();
+      if (!video.ended && now - lastReportedPlaybackTimeRef.current < 1000) return;
+      lastReportedPlaybackTimeRef.current = now;
       reportPlayback({ currentTime: video.currentTime, duration: video.duration || currentItem.durationSeconds });
       updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds);
     };
@@ -1230,24 +1248,36 @@ export function VideoPlayer() {
       }
     };
     const onPlay = () => {
-      intendedPlayingRef.current = true;
+      if (wasPausedRef.current || !intendedPlayingRef.current) {
+        video.pause();
+        return;
+      }
+      updatePlaybackIntent(true);
+      wasPausedRef.current = false;
       video.muted = volume === 0;
       video.volume = volume;
       video.playbackRate = playbackSpeed;
       reportPlayback({ isPlaying: true, isLoading: false, error: null });
     };
     const onPause = () => {
-      intendedPlayingRef.current = false;
+      updatePlaybackIntent(false);
+      wasPausedRef.current = true;
+      playbackIntentVersionRef.current += 1;
       clearBuffering();
       reportPlayback({ isPlaying: false, isLoading: false, forceTimeUpdate: true });
       updateWatchProgress(currentItem.id, video.currentTime, video.duration || currentItem.durationSeconds, true);
     };
     const onPlaying = () => {
+      if (wasPausedRef.current || !intendedPlayingRef.current) {
+        video.pause();
+        return;
+      }
       clearBuffering();
       networkRetryCountRef.current = 0;
       mediaRetryCountRef.current = 0;
       nativeRetryCountRef.current = 0;
-      intendedPlayingRef.current = true;
+      updatePlaybackIntent(true);
+      wasPausedRef.current = false;
       reportPlayback({ isPlaying: true, isLoading: false, error: null });
     };
     const onSeeking = () => {
@@ -1285,19 +1315,30 @@ export function VideoPlayer() {
               videoRef.current.src = directUrl;
               videoRef.current.load();
               if (resumeTime > 0) videoRef.current.currentTime = resumeTime;
-              videoRef.current.play().catch(() => undefined);
+              if (intendedPlayingRef.current && !wasPausedRef.current) {
+                videoRef.current.play().catch(() => undefined);
+              }
             }
           }, 1000 * nativeRetryCountRef.current);
           return;
         }
       }
       if (!fallBackQuality()) {
+        updatePlaybackIntent(false);
+        wasPausedRef.current = true;
+        playbackIntentVersionRef.current += 1;
         reportPlayback({
           isLoading: false,
           isPlaying: false,
           error: 'This video stream encountered a playback error or network block. Try selecting a different quality or server.',
         });
       }
+    };
+    const onEnded = () => {
+      updatePlaybackIntent(false);
+      wasPausedRef.current = true;
+      playbackIntentVersionRef.current += 1;
+      handleEnded();
     };
 
     if (!isHls) {
@@ -1313,7 +1354,7 @@ export function VideoPlayer() {
     video.addEventListener('seeking', onSeeking);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('seeked', onSeeked);
-    video.addEventListener('ended', handleEnded);
+    video.addEventListener('ended', onEnded);
     video.addEventListener('error', onError);
 
     if (!isHls || (!Hls.isSupported() && video.canPlayType('application/vnd.apple.mpegurl'))) {
@@ -1330,17 +1371,21 @@ export function VideoPlayer() {
     // STATE_BUFFERING before the first frame arrives, and let the watchdog
     // retire it as soon as data starts flowing.
     if (!wasPausedRef.current) {
-      intendedPlayingRef.current = true;
+      updatePlaybackIntent(true);
       engageBuffering();
     }
 
     const controller: PlaybackController = {
       play: () => {
-        intendedPlayingRef.current = true;
+        updatePlaybackIntent(true);
+        wasPausedRef.current = false;
+        playbackIntentVersionRef.current += 1;
         video.play().catch(() => undefined);
       },
       pause: () => {
-        intendedPlayingRef.current = false;
+        updatePlaybackIntent(false);
+        wasPausedRef.current = true;
+        playbackIntentVersionRef.current += 1;
         video.pause();
       },
       seek: (seconds) => {
@@ -1369,7 +1414,7 @@ export function VideoPlayer() {
       video.removeEventListener('seeking', onSeeking);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('seeked', onSeeked);
-      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('ended', onEnded);
       video.removeEventListener('error', onError);
       clearBuffering();
       if (networkRetryTimerRef.current) clearTimeout(networkRetryTimerRef.current);
@@ -1385,7 +1430,7 @@ export function VideoPlayer() {
       hlsInstance?.destroy();
       registerController(null);
     };
-  }, [source, directUrl, currentId, handleEnded, registerController, reportPlayback, updateWatchProgress, syncWithTime, seekDirectly]);
+  }, [source, directUrl, currentId, handleEnded, registerController, reportPlayback, updateWatchProgress, syncWithTime, seekDirectly, updatePlaybackIntent]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -1425,28 +1470,70 @@ export function VideoPlayer() {
             try {
               target.setVolume(volume * 100);
               if (resumeAt > 2) target.seekTo(resumeAt, true);
-              target.playVideo();
+              if (wasPausedRef.current || !intendedPlayingRef.current) target.pauseVideo();
+              else target.playVideo();
             } catch {}
-            reportPlayback({ isLoading: false, error: null });
+            reportPlayback({
+              isLoading: false,
+              isPlaying: intendedPlayingRef.current && !wasPausedRef.current,
+              error: null,
+            });
           },
           onStateChange: ({ data, target }) => {
             if (!active) return;
-            if (data === 1) reportPlayback({ isPlaying: true, isLoading: false });
-            if (data === 2) reportPlayback({ isPlaying: false, isLoading: false });
+            if (data === 1) {
+              if (wasPausedRef.current || !intendedPlayingRef.current) {
+                try { target.pauseVideo(); } catch {}
+                return;
+              }
+              updatePlaybackIntent(true);
+              wasPausedRef.current = false;
+              reportPlayback({ isPlaying: true, isLoading: false });
+            }
+            if (data === 2) {
+              if (intendedPlayingRef.current && !wasPausedRef.current) {
+                try { target.playVideo(); } catch {}
+                return;
+              }
+              updatePlaybackIntent(false);
+              wasPausedRef.current = true;
+              playbackIntentVersionRef.current += 1;
+              reportPlayback({ isPlaying: false, isLoading: false });
+            }
             if (data === 3) reportPlayback({ isLoading: true });
-            if (data === 0) handleEnded();
+            if (data === 0) {
+              updatePlaybackIntent(false);
+              wasPausedRef.current = true;
+              playbackIntentVersionRef.current += 1;
+              handleEnded();
+            }
             try {
               const total = target.getDuration() || itemAtStart.durationSeconds;
               if (total) reportPlayback({ duration: total });
             } catch {}
           },
-          onError: () => reportPlayback({ isPlaying: false, isLoading: false, error: 'The official trailer is restricted from embedded playback.' }),
+          onError: () => {
+            updatePlaybackIntent(false);
+            wasPausedRef.current = true;
+            playbackIntentVersionRef.current += 1;
+            reportPlayback({ isPlaying: false, isLoading: false, error: 'The official trailer is restricted from embedded playback.' });
+          },
         },
       });
 
       const controller: PlaybackController = {
-        play: () => { try { youtubePlayerRef.current?.playVideo(); } catch {} },
-        pause: () => { try { youtubePlayerRef.current?.pauseVideo(); } catch {} },
+        play: () => {
+          updatePlaybackIntent(true);
+          wasPausedRef.current = false;
+          playbackIntentVersionRef.current += 1;
+          try { youtubePlayerRef.current?.playVideo(); } catch {}
+        },
+        pause: () => {
+          updatePlaybackIntent(false);
+          wasPausedRef.current = true;
+          playbackIntentVersionRef.current += 1;
+          try { youtubePlayerRef.current?.pauseVideo(); } catch {}
+        },
         seek: (seconds) => { try { youtubePlayerRef.current?.seekTo(seconds, true); } catch {} },
         setVolume: (nextVolume) => { try { youtubePlayerRef.current?.setVolume(nextVolume * 100); } catch {} },
       };
@@ -1461,7 +1548,12 @@ export function VideoPlayer() {
         updateWatchProgress(itemAtStart.id, position, total);
       }, 750);
     }).catch((error) => {
-      if (active) reportPlayback({ isLoading: false, isPlaying: false, error: error instanceof Error ? error.message : 'Could not load trailer player.' });
+      if (active) {
+        updatePlaybackIntent(false);
+        wasPausedRef.current = true;
+        playbackIntentVersionRef.current += 1;
+        reportPlayback({ isLoading: false, isPlaying: false, error: error instanceof Error ? error.message : 'Could not load trailer player.' });
+      }
     });
 
     return () => {
@@ -1472,11 +1564,15 @@ export function VideoPlayer() {
       youtubePlayerRef.current = null;
       registerController(null);
     };
-  }, [source, currentId, handleEnded, registerController, reportPlayback, updateWatchProgress]);
+  }, [source, currentId, handleEnded, registerController, reportPlayback, updateWatchProgress, updatePlaybackIntent]);
 
   useEffect(() => {
-    if (!isExpanded && source?.kind === 'youtube') youtubePlayerRef.current?.pauseVideo();
-  }, [isExpanded, source]);
+    if (isExpanded || source?.kind !== 'youtube') return;
+    updatePlaybackIntent(false);
+    wasPausedRef.current = true;
+    playbackIntentVersionRef.current += 1;
+    youtubePlayerRef.current?.pauseVideo();
+  }, [isExpanded, source, updatePlaybackIntent]);
 
   useEffect(() => {
     const updateOrientation = () => {
@@ -1632,7 +1728,7 @@ export function VideoPlayer() {
     revealControls();
 
     const video = videoRef.current;
-    const wasPaused = video ? video.paused : !isPlaying;
+    const wasPaused = video ? video.paused && !intendedPlayingRef.current : !isPlaying;
     wasPausedRef.current = wasPaused;
     const currentPos = video?.currentTime ?? currentTime;
 
@@ -1705,7 +1801,7 @@ export function VideoPlayer() {
     setSwitchingSource(true);
     setPlayerMenu(null);
     const video = videoRef.current;
-    wasPausedRef.current = video ? video.paused : !isPlaying;
+    wasPausedRef.current = video ? video.paused && !intendedPlayingRef.current : !isPlaying;
     pendingSeekRef.current = video?.currentTime ?? currentTime;
     try {
       const response = await fetch(resolveUrl);
@@ -1801,47 +1897,54 @@ export function VideoPlayer() {
   };
 
   const animatedTogglePlay = () => {
-    if (isEnded) {
-      seekDirectly(0);
-      return;
-    }
     const video = videoRef.current;
-    if (video && source?.kind === 'direct') {
-      if (video.paused) {
-        intendedPlayingRef.current = true;
-        setControlPulse('play');
-        const playPromise = video.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => reportPlayback({ isPlaying: true, isLoading: false }))
-            .catch(() => reportPlayback({ isPlaying: false, isLoading: false }));
-        } else {
-          reportPlayback({ isPlaying: true, isLoading: false });
-        }
+    const youtube = source?.kind === 'youtube' ? youtubePlayerRef.current : null;
+    const currentlyPlaying = hasPlaybackIntent || isPlaying;
+    const shouldPlay = isEnded || !currentlyPlaying;
+
+    if (isEnded) {
+      if (source?.kind === 'direct' && video) seekDirectly(0);
+      else if (youtube) {
+        try { youtube.seekTo(0, true); } catch {}
+      } else seekDirectly(0);
+    }
+
+    playbackIntentVersionRef.current += 1;
+    updatePlaybackIntent(shouldPlay);
+    wasPausedRef.current = !shouldPlay;
+    setControlPulse(shouldPlay ? 'play' : 'pause');
+
+    if (source?.kind === 'direct' && video) {
+      if (shouldPlay) {
+        const intentVersion = playbackIntentVersionRef.current;
+        reportPlayback({ isPlaying: true, isLoading: video.readyState < 3, error: null });
+        try { hlsRef.current?.startLoad(video.currentTime); } catch {}
+        video.play()
+          .then(() => {
+            if (intentVersion !== playbackIntentVersionRef.current || !intendedPlayingRef.current) return;
+            reportPlayback({ isPlaying: true, isLoading: false });
+          })
+          .catch(() => {
+            if (intentVersion !== playbackIntentVersionRef.current || !intendedPlayingRef.current) return;
+            updatePlaybackIntent(false);
+            wasPausedRef.current = true;
+            playbackIntentVersionRef.current += 1;
+            reportPlayback({ isPlaying: false, isLoading: false });
+          });
       } else {
-        intendedPlayingRef.current = false;
-        setControlPulse('pause');
         video.pause();
         reportPlayback({ isPlaying: false, isLoading: false });
       }
-    } else if (source?.kind === 'youtube' && youtubePlayerRef.current) {
+    } else if (youtube) {
       try {
-        const yt = youtubePlayerRef.current;
-        const state = typeof yt.getPlayerState === 'function' ? yt.getPlayerState() : (isPlaying ? 1 : 2);
-        if (state === 1) {
-          setControlPulse('pause');
-          yt.pauseVideo();
-          reportPlayback({ isPlaying: false, isLoading: false });
-        } else {
-          setControlPulse('play');
-          yt.playVideo();
-          reportPlayback({ isPlaying: true, isLoading: false });
-        }
-      } catch {
-        togglePlay();
-      }
+        if (shouldPlay) youtube.playVideo();
+        else youtube.pauseVideo();
+      } catch {}
+      reportPlayback({ isPlaying: shouldPlay, isLoading: false, error: null });
     } else {
-      togglePlay();
+      // Remember the click while source resolution or the YouTube API is still
+      // in flight. The source-ready handlers honor this intent before playing.
+      reportPlayback({ isPlaying: shouldPlay, isLoading: true, error: null });
     }
     if (pulseTimerRef.current) clearTimeout(pulseTimerRef.current);
     pulseTimerRef.current = setTimeout(() => setControlPulse(null), 400);
@@ -2163,6 +2266,7 @@ export function VideoPlayer() {
     isBrowserFullscreen,
   };
 
+  const playbackControlIsPlaying = !isEnded && (hasPlaybackIntent || isPlaying);
   const contextSubtitle = [
     isSeries && currentItem.selectedSeason ? `S${currentItem.selectedSeason} · E${currentItem.selectedEpisode || 1}` : null,
     source?.label || 'Co-Stream',
@@ -2298,7 +2402,7 @@ export function VideoPlayer() {
                     <PlayerCenterControls
                       showControls={showControls}
                       playerMenuOpen={Boolean(playerMenu)}
-                      isPlaying={isPlaying}
+                      isPlaying={playbackControlIsPlaying}
                       isLoading={isLoading}
                       switchingSource={switchingSource}
                       isEnded={isEnded}
@@ -2529,27 +2633,26 @@ export function VideoPlayer() {
             >
               <h3 className="text-xs font-black truncate text-[var(--text)]">{currentItem.title}</h3>
               <p className={`text-[10px] truncate mt-0.5 ${playbackError ? 'text-red-500 dark:text-red-400' : 'text-[var(--text-muted)]'}`}>
-                {playbackError || (source?.kind === 'youtube' ? 'Official trailer • tap to resume' : isPlaying ? 'Playing now' : 'Paused')}
+                {playbackError || (isLoading ? 'Loading video…' : source?.kind === 'youtube' ? 'Official trailer' : playbackControlIsPlaying ? 'Playing now' : 'Paused')}
               </p>
             </button>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (source?.kind === 'youtube') {
-                  setIsExpanded(true);
-                } else {
-                  animatedTogglePlay();
-                }
+                if (source?.kind === 'youtube') setIsExpanded(true);
+                animatedTogglePlay();
               }}
               onTouchStart={(e) => e.stopPropagation()}
               onTouchEnd={(e) => e.stopPropagation()}
               className="w-10 h-10 rounded-full bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 shadow-md"
-              title={isPlaying ? "Pause" : "Play"}
+              title={playbackControlIsPlaying ? "Pause" : "Play"}
+              aria-label={playbackControlIsPlaying ? 'Pause video' : 'Play video'}
+              aria-pressed={playbackControlIsPlaying}
             >
               {switchingSource ? (
                 <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-              ) : isPlaying ? (
+              ) : playbackControlIsPlaying ? (
                 <Pause size={18} className="fill-current" />
               ) : (
                 <Play size={18} className="fill-current ml-0.5" />

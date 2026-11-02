@@ -53,6 +53,8 @@ export const PlayerCenterControls = React.memo(function PlayerCenterControls({
         onTouchStart={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
         disabled={switchingSource}
+        aria-label={isEnded ? 'Replay video' : isPlaying ? 'Pause video' : 'Play video'}
+        aria-pressed={isPlaying}
         className={`player-gpu-layer ${
           isInteractive ? 'pointer-events-auto' : 'pointer-events-none'
         } w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white hover:bg-white/95 text-black flex items-center justify-center shadow-2xl transition-transform active:scale-90 disabled:opacity-60`}

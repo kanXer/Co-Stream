@@ -21,15 +21,27 @@ import {
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { AUTH_EVENT, getSession, type CoProfile } from '@/components/AuthGate';
-import { DetailsSheet } from '@/components/DetailsSheet';
 import { MediaCard } from '@/components/MediaCard';
-import { OfflineLibrary } from '@/components/OfflineLibrary';
-import { PlatformPicker } from '@/components/PlatformPicker';
-import { SettingsModal } from '@/components/SettingsModal';
 import { AVAILABLE_LANGUAGES, useStream } from '@/context/StreamContext';
 
 const VideoPlayer = dynamic(
   () => import('@/components/VideoPlayer').then((mod) => mod.VideoPlayer),
+  { ssr: false }
+);
+const DetailsSheet = dynamic(
+  () => import('@/components/DetailsSheet').then((mod) => mod.DetailsSheet),
+  { ssr: false }
+);
+const OfflineLibrary = dynamic(
+  () => import('@/components/OfflineLibrary').then((mod) => mod.OfflineLibrary),
+  { ssr: false }
+);
+const PlatformPicker = dynamic(
+  () => import('@/components/PlatformPicker').then((mod) => mod.PlatformPicker),
+  { ssr: false }
+);
+const SettingsModal = dynamic(
+  () => import('@/components/SettingsModal').then((mod) => mod.SettingsModal),
   { ssr: false }
 );
 import {
@@ -486,7 +498,7 @@ export default function HomePage() {
 
       {showBackExitHint && <div className={`fixed left-1/2 z-[100] -translate-x-1/2 whitespace-nowrap rounded-full border border-[var(--line)] bg-[var(--panel-elevated)]/95 px-4 py-2.5 text-[11px] font-black shadow-2xl backdrop-blur-2xl ${currentItem ? 'bottom-[calc(11rem+env(safe-area-inset-bottom,0px))]' : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'}`}>Press back again to exit</div>}
 
-      <VideoPlayer />
+      {currentItem && <VideoPlayer />}
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 h-[calc(4.5rem+env(safe-area-inset-bottom,0px))] max-w-full overflow-hidden pb-[env(safe-area-inset-bottom,0px)] border-t border-[var(--line)] bg-[var(--bg)]/93 backdrop-blur-2xl md:hidden flex items-center justify-around">
         <BottomNav active={tab === 'home'} onClick={() => switchTab('home')} icon={<House size={20} />} label="Home" />
@@ -496,8 +508,8 @@ export default function HomePage() {
       </nav>
 
       {selectedItem && <DetailsSheet item={selectedItem} onClose={() => setSelectedItem(null)} onSelect={setSelectedItem} />}
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} profile={profile} />
-      <PlatformPicker open={platformPickerOpen} selected={platforms} required={!platformReady} onClose={() => setPlatformPickerOpen(false)} onSave={savePlatforms} />
+      {settingsOpen && <SettingsModal open onClose={() => setSettingsOpen(false)} profile={profile} />}
+      {platformPickerOpen && <PlatformPicker open selected={platforms} required={!platformReady} onClose={() => setPlatformPickerOpen(false)} onSave={savePlatforms} />}
     </div>
   );
 }
