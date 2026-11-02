@@ -1899,7 +1899,10 @@ export function VideoPlayer() {
   const animatedTogglePlay = () => {
     const video = videoRef.current;
     const youtube = source?.kind === 'youtube' ? youtubePlayerRef.current : null;
-    const currentlyPlaying = hasPlaybackIntent || isPlaying;
+    // The ref changes synchronously with each click. `isPlaying` and the state
+    // mirror can lag behind native media/YouTube pause events, which can make a
+    // quick play tap get interpreted as another pause.
+    const currentlyPlaying = intendedPlayingRef.current;
     const shouldPlay = isEnded || !currentlyPlaying;
 
     if (isEnded) {
@@ -2266,7 +2269,7 @@ export function VideoPlayer() {
     isBrowserFullscreen,
   };
 
-  const playbackControlIsPlaying = !isEnded && (hasPlaybackIntent || isPlaying);
+  const playbackControlIsPlaying = !isEnded && hasPlaybackIntent;
   const contextSubtitle = [
     isSeries && currentItem.selectedSeason ? `S${currentItem.selectedSeason} · E${currentItem.selectedEpisode || 1}` : null,
     source?.label || 'Co-Stream',
