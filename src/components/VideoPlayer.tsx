@@ -1260,6 +1260,13 @@ export function VideoPlayer() {
       reportPlayback({ isPlaying: true, isLoading: false, error: null });
     };
     const onPause = () => {
+      // A pause event can be delivered after a newer Play tap. Keep the latest
+      // user intent authoritative instead of letting that stale event pause the
+      // mini player again.
+      if (intendedPlayingRef.current && !wasPausedRef.current) {
+        if (video.paused) video.play().catch(() => undefined);
+        return;
+      }
       updatePlaybackIntent(false);
       wasPausedRef.current = true;
       playbackIntentVersionRef.current += 1;
